@@ -32,6 +32,9 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('stt:progress', (_e, p) => callback(p));
   },
 
+  // ===== 文字轉語音 =====
+  speak: (text, opts) => ipcRenderer.invoke('tts:speak', text, opts || {}),
+
   // ===== 全域熱鍵推送 =====
   onHotkeyToggleRecord: (callback) => {
     ipcRenderer.on('hotkey:toggle-record', () => callback());

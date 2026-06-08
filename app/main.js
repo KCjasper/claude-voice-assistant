@@ -6,6 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const store = require('./src/config/store');
 const whisper = require('./src/stt/whisper');
+const tts = require('./src/tts/speak');
 
 const FLOATING_W = 340, FLOATING_H = 520, EDGE = 24;
 const FULLSCREEN_PADDING = 0;
@@ -228,6 +229,15 @@ ipcMain.handle('stt:transcribe', async (event, wavPath, opts) => {
   } catch {}
 
   return result;
+});
+
+// ========== IPC：Edge TTS 語音合成 ==========
+ipcMain.handle('tts:speak', async (event, text, opts) => {
+  const prefs = store.loadPrefs();
+  return await tts.synthesize(text, {
+    voice: (opts && opts.voice) || prefs.ttsVoice,
+    rate: (opts && opts.rate) || prefs.ttsRate,
+  });
 });
 
 // ========== App 生命週期 ==========

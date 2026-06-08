@@ -109,17 +109,63 @@ async function stopRecording() {
   });
 
   if (sttRes.ok) {
-    const text = sttRes.text || '（沒有辨識到內容，可能太短或太小聲）';
-    setState('idle', {
-      detail: `✓ 辨識完成（之後階段 5 會交給 Claude）`,
-      transcript: { speaker: 'YOU', body: text },
-    });
+    const text = sttRes.text || '';
+    if (!text) {
+      setState('idle', { detail: '（沒有辨識到內容，可能太短或太小聲）' });
+      return;
+    }
+    // 階段 4 測試：先把辨識到的話用語音念回來（階段 5 會改成念 Claude 的回覆）
+    await speak(text, { youSaid: text });
   } else {
     setState('idle', { detail: `辨識失敗：${sttRes.error}` });
   }
 }
 
+// ===== TTS 播放 =====
+let currentAudio = null;
+
+function stopSpeaking() {
+  if (currentAudio) {
+    try { currentAudio.pause(); } catch {}
+    currentAudio = null;
+  }
+}
+
+async function speak(text, opts = {}) {
+  if (!text) return;
+  stopSpeaking();
+
+  setState('thinking', { detail: '合成語音中⋯', transcript: { speaker: 'YOU', body: opts.youSaid || text } });
+  const res = await window.api.speak(text);
+  if (!res.ok) {
+    setState('idle', { detail: `語音合成失敗：${res.error}`, transcript: { speaker: 'YOU', body: opts.youSaid || text } });
+    return;
+  }
+
+  const audio = new Audio('data:audio/mp3;base64,' + res.audioBase64);
+  currentAudio = audio;
+
+  audio.onended = () => {
+    currentAudio = null;
+    setState('idle', { detail: '✓ 完成', transcript: { speaker: 'CLAUDE', body: text } });
+  };
+  audio.onerror = () => {
+    currentAudio = null;
+    setState('idle', { detail: '播放失敗' });
+  };
+
+  setState('speaking', { transcript: { speaker: 'CLAUDE', body: text } });
+  try {
+    await audio.play();
+  } catch (e) {
+    currentAudio = null;
+    setState('idle', { detail: `播放失敗：${e.message}` });
+  }
+}
+
 async function toggleRecording() {
+  // 如果正在說話，先打斷它，不要錄音
+  if (currentAudio) { stopSpeaking(); setState('idle', { clearTranscript: false }); return; }
   if (recorder.isRecording()) await stopRecording();
   else await startRecording();
 }

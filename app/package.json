@@ -19,6 +19,7 @@
     "electron": "^42.3.3"
   },
   "dependencies": {
-    "adm-zip": "^0.5.17"
+    "adm-zip": "^0.5.17",
+    "msedge-tts": "^2.0.5"
   }
 }
