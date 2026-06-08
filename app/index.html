@@ -37,7 +37,7 @@
       <div class="ctrl-btn" title="按住說話 / 點擊開始錄音" id="btnMic">🎙</div>
       <div class="ctrl-btn" title="設定" id="btnSettings">⚙</div>
     </div>
-    <div class="meter">今日 $0.00 · 月額 $50</div>
+    <div class="meter" id="usageMeter" title="今日 / 本月用量">今日 $0.00 · 本月 $0.00</div>
     <div class="ctrl-btn" title="展開 Ops Center" id="btnExpand">⛶</div>
     <div class="ctrl-btn" title="最小化" id="btnMinimize">－</div>
     <div class="ctrl-btn" title="關閉" id="btnClose">×</div>
@@ -57,6 +57,7 @@
 </div>
 
 <script src="src/audio/recorder.js"></script>
+<script src="usage-util.js"></script>
 <script src="renderer.js"></script>
 </body>
 </html>

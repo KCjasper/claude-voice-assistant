@@ -82,6 +82,30 @@ function computeCost(model, usage) {
   return (usage.prompt_tokens / 1e6) * p.in + (usage.completion_tokens / 1e6) * p.out;
 }
 
+// 粗略估算 token：中日韓字 ~1 token/字，其餘 ~1 token/4 字
+function estimateTokens(text) {
+  if (!text) return 0;
+  const s = String(text);
+  const cjk = (s.match(/[　-鿿぀-ヿ가-힯＀-￯]/g) || []).length;
+  const rest = s.length - cjk;
+  return Math.ceil(cjk + rest / 4);
+}
+
+// 修正串流模式下 Claw Router 回報不準的 usage（常見 prompt_tokens≈1）
+// 若回報值明顯低於本地估算，就改用估算值，避免成本被嚴重低估。
+function reconcileUsage(usage, messages, replyText) {
+  const promptText = (messages || [])
+    .map((m) => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content || '')))
+    .join('\n') + JSON.stringify(tools.schema);
+  const estPrompt = estimateTokens(promptText);
+  const estCompletion = estimateTokens(replyText);
+  if (usage.prompt_tokens < estPrompt * 0.5) usage.prompt_tokens = estPrompt;
+  if (usage.completion_tokens < estCompletion * 0.5) usage.completion_tokens = estCompletion;
+  usage.total_tokens = usage.prompt_tokens + usage.completion_tokens;
+  usage.estimated = true; // 標記為估算值（前端可顯示「約」）
+  return usage;
+}
+
 // 句子邊界：中文標點（單字元）或英文句點/問號/驚嘆號後接空白，或換行
 const SENTENCE_BOUNDARY = /[。！？]|[!?]\s|\.\s|\n/g;
 
@@ -195,7 +219,9 @@ async function chat(userText, opts = {}) {
       }
 
       if (history.length > MAX_HISTORY) history = history.slice(-MAX_HISTORY);
-      return { ok: true, text: (content || fullText).trim(), usage, cost: computeCost(model, usage), model };
+      const replyText = (content || fullText).trim();
+      reconcileUsage(usage, messages, replyText);
+      return { ok: true, text: replyText, usage, cost: computeCost(model, usage), model };
     }
 
     return { ok: false, error: `工具呼叫超過上限（${MAX_ITERATIONS} 次），可能卡住了`, usage };

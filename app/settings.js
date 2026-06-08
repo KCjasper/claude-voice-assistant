@@ -74,6 +74,16 @@ async function loadAll() {
   els.rateValue.textContent = `${Number(prefs.ttsRate).toFixed(2)}×`;
   els.monthlyCap.value = prefs.monthlyCapUsd;
 
+  // 用量統計
+  if (window.UsageUtil) {
+    const sum = window.UsageUtil.summary(prefs.usage);
+    const fmt = window.UsageUtil.fmtMoney;
+    const sm = document.getElementById('statMonth');
+    const st = document.getElementById('statToday');
+    if (sm) sm.textContent = fmt(sum.month.usd);
+    if (st) st.textContent = fmt(sum.today.usd);
+  }
+
   const hasKey = await window.api.hasApiKey();
   if (hasKey) {
     els.keyStatus.textContent = '✓ Key 已加密儲存（內容不顯示）';

@@ -127,6 +127,21 @@ let activeUserText = '';
 async function askClaude(userText) {
   activeUserText = userText;
   resetSpeakQueue();
+
+  // 月額上限檢查：超過就擋下、不送 Claude（避免燒錢）
+  const prefs = await window.api.getPrefs();
+  const cap = prefs.monthlyCapUsd || 0;
+  if (cap > 0) {
+    const sum = window.UsageUtil.summary(prefs.usage);
+    if (sum.month.usd >= cap) {
+      setState('idle', {
+        detail: `已達本月上限 $${cap.toFixed(0)}（已用 $${sum.month.usd.toFixed(2)}）· 到 ⚙ 設定調整`,
+        transcript: { speaker: 'YOU', body: userText },
+      });
+      return;
+    }
+  }
+
   setState('thinking', {
     detail: 'Claude 思考中⋯',
     transcript: { speaker: 'YOU', body: userText },
@@ -143,6 +158,9 @@ async function askClaude(userText) {
     });
     return;
   }
+
+  // 記錄用量（成本來自 engine 回傳的 res.cost / res.usage）
+  await recordUsage(res);
 
   // 等佇列把剩下的句子念完
   await waitQueueDrain();
@@ -321,5 +339,40 @@ devButtons.forEach(b => {
   b.addEventListener('click', () => setState(b.dataset.state, { clearTranscript: true }));
 });
 
+// ===== 用量追蹤 =====
+const usageMeter = document.getElementById('usageMeter');
+
+async function recordUsage(res) {
+  if (!res || typeof res.cost !== 'number') return;
+  const prefs = await window.api.getPrefs();
+  const usage = window.UsageUtil.addUsage(prefs.usage, {
+    cost: res.cost,
+    promptTokens: res.usage && res.usage.prompt_tokens,
+    completionTokens: res.usage && res.usage.completion_tokens,
+  });
+  await window.api.savePrefs({ usage });
+  refreshMeter(prefs.monthlyCapUsd, usage);
+}
+
+async function refreshMeter(cap, usage) {
+  if (cap === undefined || usage === undefined) {
+    const prefs = await window.api.getPrefs();
+    cap = prefs.monthlyCapUsd;
+    usage = prefs.usage;
+  }
+  const sum = window.UsageUtil.summary(usage);
+  const fmt = window.UsageUtil.fmtMoney;
+  const capStr = cap > 0 ? ` / $${Number(cap).toFixed(0)}` : '';
+  usageMeter.textContent = `今日 ${fmt(sum.today.usd)} · 本月 ${fmt(sum.month.usd)}${capStr}`;
+  usageMeter.title = `約略用量（估算）· 今日 ${sum.today.calls} 次對話`;
+  // 接近 / 超過上限變色提醒
+  usageMeter.classList.remove('warn', 'over');
+  if (cap > 0) {
+    if (sum.month.usd >= cap) usageMeter.classList.add('over');
+    else if (sum.month.usd >= cap * 0.8) usageMeter.classList.add('warn');
+  }
+}
+
 // 初始狀態
 setState('idle', { clearTranscript: true });
+refreshMeter();
