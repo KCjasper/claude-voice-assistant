@@ -17,7 +17,7 @@ const DEFAULT_PREFS = {
   pttHotkey: 'Control+Space',
   monthlyCapUsd: 50,
   modelRouting: true,
-  searchProvider: 'brave',     // 'brave' | 'google'
+  searchProvider: 'tavily',    // 'tavily' | 'brave' | 'google'
   googleCx: '',                // Google Custom Search 引擎 ID（用 google 時才需要）
   sttUseGpu: true,             // 用 GPU (CUDA) 跑 Whisper；失敗會自動退回 CPU
   jarvisMode: false,           // 英文 Jarvis 人格（英國管家口吻、英文回答）

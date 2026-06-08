@@ -50,9 +50,17 @@ const els = {
 let savedElevenVoiceId = '';
 
 const SEARCH_HINTS = {
-  brave: '到 brave.com/search/api 註冊 → 拿 Subscription Token（免費方案 2000 次/月）',
+  tavily: '到 tavily.com 用 Email/Google 註冊（免費、不綁卡）→ 在 Dashboard 拿 API Key（tvly-... 開頭，每月 1000 次免費）',
+  brave: '到 brave.com/search/api 註冊 → 拿 Subscription Token（免費方案 2000 次/月，需綁卡驗證）',
   google: '到 Google Cloud 開啟 Custom Search API 拿 API Key，再到 programmablesearchengine.google.com 建搜尋引擎拿 cx（設定為搜尋整個網路）',
 };
+
+// provider → 加密 secret 名稱
+function searchSecretName(provider) {
+  if (provider === 'google') return 'googleSearchKey';
+  if (provider === 'brave') return 'braveSearchKey';
+  return 'tavilySearchKey';
+}
 
 // ===== 載入既有設定 =====
 async function loadAll() {
@@ -77,7 +85,7 @@ async function loadAll() {
   }
 
   // 搜尋設定
-  els.searchProvider.value = prefs.searchProvider || 'brave';
+  els.searchProvider.value = prefs.searchProvider || 'tavily';
   els.googleCx.value = prefs.googleCx || '';
   updateSearchProviderUI();
   await refreshSearchKeyStatus();
@@ -146,7 +154,7 @@ function updateSearchProviderUI() {
 
 async function refreshSearchKeyStatus() {
   const provider = els.searchProvider.value;
-  const secretName = provider === 'google' ? 'googleSearchKey' : 'braveSearchKey';
+  const secretName = searchSecretName(provider);
   const has = await window.api.hasSecret(secretName);
   if (has) {
     els.searchKeyStatus.textContent = '✓ 已加密儲存';
@@ -326,7 +334,7 @@ els.saveSearch.addEventListener('click', async () => {
 
   const raw = els.searchKey.value.trim();
   if (raw) {
-    const secretName = provider === 'google' ? 'googleSearchKey' : 'braveSearchKey';
+    const secretName = searchSecretName(provider);
     const res = await window.api.saveSecret(secretName, raw);
     if (res.ok) {
       els.searchKey.value = '';
@@ -344,7 +352,7 @@ els.saveSearch.addEventListener('click', async () => {
 // ===== 搜尋：清除 Key =====
 els.clearSearch.addEventListener('click', async () => {
   const provider = els.searchProvider.value;
-  const secretName = provider === 'google' ? 'googleSearchKey' : 'braveSearchKey';
+  const secretName = searchSecretName(provider);
   if (!confirm('確定要清除這個搜尋 API Key？')) return;
   await window.api.clearSecret(secretName);
   await refreshSearchKeyStatus();

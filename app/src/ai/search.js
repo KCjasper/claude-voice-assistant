@@ -25,6 +25,27 @@ async function braveSearch(query, count) {
   return { ok: true, results };
 }
 
+async function tavilySearch(query, count) {
+  const key = store.loadSecret('tavilySearchKey');
+  if (!key) return { ok: false, error: '尚未設定 Tavily API Key' };
+  const res = await timeoutFetch('https://api.tavily.com/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ api_key: key, query, max_results: count, search_depth: 'basic' }),
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => '');
+    return { ok: false, error: `Tavily HTTP ${res.status}：${t.slice(0, 120)}` };
+  }
+  const data = await res.json();
+  const results = (data.results || []).slice(0, count).map((r) => ({
+    title: r.title, url: r.url, snippet: r.content,
+  }));
+  // Tavily 有時直接給一個 answer，附在最前面當參考
+  if (data.answer) results.unshift({ title: '（Tavily 摘要）', url: '', snippet: data.answer });
+  return { ok: true, results };
+}
+
 async function googleSearch(query, count) {
   const key = store.loadSecret('googleSearchKey');
   const cx = store.loadPrefs().googleCx;
@@ -45,13 +66,13 @@ async function googleSearch(query, count) {
  */
 async function webSearch(query, count = 5) {
   if (!query || !query.trim()) return '錯誤：搜尋關鍵字為空';
-  const provider = store.loadPrefs().searchProvider || 'brave';
+  const provider = store.loadPrefs().searchProvider || 'tavily';
 
   let r;
   try {
-    r = provider === 'google'
-      ? await googleSearch(query, count)
-      : await braveSearch(query, count);
+    if (provider === 'google') r = await googleSearch(query, count);
+    else if (provider === 'brave') r = await braveSearch(query, count);
+    else r = await tavilySearch(query, count); // 預設 tavily
   } catch (e) {
     if (e.name === 'AbortError') return '錯誤：搜尋逾時';
     return `錯誤：搜尋失敗 ${e.message}`;
