@@ -8,12 +8,26 @@ const http = require('http');
 const store = require('../config/store');
 const search = require('./search');
 
-// 工作資料夾根目錄：app 位於 <workspace>/projects/voice-assistant/app
-// 往上五層即 workspace 根。可被 prefs.workspaceDir 覆寫。
+const PROJECT_ROOT = path.resolve(__dirname, '..', '..', '..');
+
+function isInsideRoot(root, target) {
+  const rel = path.relative(root, target);
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
+function normalizeRoot(p) {
+  return path.resolve(p);
+}
+
+// 工作資料夾根目錄預設為 repo root；prefs.workspaceDir 只能縮小到 repo 內。
 function workspaceRoot() {
   const prefs = store.loadPrefs();
-  if (prefs.workspaceDir && fs.existsSync(prefs.workspaceDir)) return prefs.workspaceDir;
-  return path.resolve(__dirname, '..', '..', '..', '..', '..');
+  const root = normalizeRoot(PROJECT_ROOT);
+  if (prefs.workspaceDir) {
+    const configured = normalizeRoot(prefs.workspaceDir);
+    if (fs.existsSync(configured) && isInsideRoot(root, configured)) return configured;
+  }
+  return root;
 }
 
 // 把使用者給的相對/絕對路徑解析成「保證在工作資料夾內」的絕對路徑
