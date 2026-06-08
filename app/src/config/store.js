@@ -21,6 +21,9 @@ const DEFAULT_PREFS = {
   googleCx: '',                // Google Custom Search 引擎 ID（用 google 時才需要）
   sttUseGpu: true,             // 用 GPU (CUDA) 跑 Whisper；失敗會自動退回 CPU
   jarvisMode: false,           // 英文 Jarvis 人格（英國管家口吻、英文回答）
+  ttsEngine: 'edge',           // 'edge'（免費）| 'elevenlabs'（真人級）
+  elevenVoiceId: '',           // ElevenLabs 選定的聲音 ID
+  elevenModel: 'eleven_multilingual_v2',
 };
 
 // ===== 通用加密 secret（搜尋 key、未來 OAuth token 等）=====

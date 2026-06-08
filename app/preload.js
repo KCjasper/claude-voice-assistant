@@ -39,6 +39,7 @@ contextBridge.exposeInMainWorld('api', {
 
   // ===== 文字轉語音 =====
   speak: (text, opts) => ipcRenderer.invoke('tts:speak', text, opts || {}),
+  listElevenVoices: () => ipcRenderer.invoke('tts:list-eleven-voices'),
 
   // ===== AI 對話 =====
   chat: (text, opts) => ipcRenderer.invoke('ai:chat', text, opts || {}),

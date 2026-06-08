@@ -7,6 +7,7 @@ const fs = require('fs');
 const store = require('./src/config/store');
 const whisper = require('./src/stt/whisper');
 const tts = require('./src/tts/speak');
+const eleven = require('./src/tts/elevenlabs');
 const engine = require('./src/ai/engine');
 
 const FLOATING_W = 340, FLOATING_H = 520, EDGE = 24;
@@ -241,14 +242,24 @@ ipcMain.handle('stt:transcribe', async (event, wavPath, opts) => {
   return result;
 });
 
-// ========== IPC：Edge TTS 語音合成 ==========
-ipcMain.handle('tts:speak', async (event, text, opts) => {
+// ========== IPC：TTS 語音合成（依引擎路由）==========
+ipcMain.handle('tts:speak', async (event, text, opts = {}) => {
   const prefs = store.loadPrefs();
+  const engineName = opts.engine || prefs.ttsEngine || 'edge';
+  if (engineName === 'elevenlabs') {
+    return await eleven.synthesize(text, {
+      voiceId: opts.voiceId || prefs.elevenVoiceId,
+      model: opts.model || prefs.elevenModel,
+    });
+  }
   return await tts.synthesize(text, {
-    voice: (opts && opts.voice) || prefs.ttsVoice,
-    rate: (opts && opts.rate) || prefs.ttsRate,
+    voice: opts.voice || prefs.ttsVoice,
+    rate: opts.rate || prefs.ttsRate,
   });
 });
+
+// 列出 ElevenLabs 帳號可用聲音
+ipcMain.handle('tts:list-eleven-voices', async () => await eleven.listVoices());
 
 // ========== IPC：AI 對話（Claw Router agent loop）==========
 ipcMain.handle('ai:chat', async (event, text, opts) => {

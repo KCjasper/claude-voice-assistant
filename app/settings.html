@@ -83,15 +83,55 @@
       <div class="section-title">VOICE</div>
 
       <div class="field">
+        <label>TTS 引擎</label>
+        <select id="ttsEngine">
+          <option value="edge">Edge（免費，14 種中文 + 英式男聲）</option>
+          <option value="elevenlabs">ElevenLabs（真人級，最像 Jarvis・需 key）</option>
+        </select>
+      </div>
+
+      <div class="field">
         <label class="checkbox-label">
           <input type="checkbox" id="jarvisMode">
           <span>🎩 Jarvis 模式（英文回答 + 英國管家口吻）</span>
         </label>
-        <div class="hint">開啟後你仍可講中文，Jarvis 會用英文回你。建議搭配 Ryan 英國男聲（勾選時自動帶入）</div>
+        <div class="hint">開啟後你仍可講中文，Jarvis 會用英文回你。Edge 引擎會自動帶入 Ryan；ElevenLabs 請挑英國男聲</div>
       </div>
 
+      <!-- ElevenLabs 區（選 elevenlabs 才顯示）-->
+      <div id="elevenBlock" style="display:none;">
+        <div class="field">
+          <label>ElevenLabs API Key</label>
+          <div class="key-row">
+            <input type="password" id="elevenKey" placeholder="貼上 ElevenLabs API Key（sk_...）" autocomplete="off">
+            <button class="icon-btn" id="btnRevealEleven" title="顯示 / 隱藏">👁</button>
+          </div>
+          <div class="key-status" id="elevenKeyStatus">尚未設定</div>
+        </div>
+        <div class="actions-row">
+          <button class="btn-primary" id="btnSaveEleven">儲存 Key</button>
+          <button class="btn-secondary" id="btnLoadVoices">載入我的聲音</button>
+          <button class="btn-danger" id="btnClearEleven">清除</button>
+        </div>
+        <div class="field" style="margin-top:12px;">
+          <label>ElevenLabs 聲音 <span class="hint">先載入再選</span></label>
+          <div class="key-row">
+            <select id="elevenVoice"><option value="">（請先按「載入我的聲音」）</option></select>
+            <button class="icon-btn" id="btnPreviewEleven" title="試聽" style="width:auto;padding:0 12px;">▶ 試聽</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>品質 / 速度</label>
+          <select id="elevenModel">
+            <option value="eleven_multilingual_v2">Multilingual v2（最自然，建議）</option>
+            <option value="eleven_turbo_v2_5">Turbo v2.5（較快）</option>
+            <option value="eleven_flash_v2_5">Flash v2.5（最快，省額度）</option>
+          </select>
+        </div>
+      </div>
 
-      <div class="field">
+      <!-- Edge 音色（選 edge 才顯示）-->
+      <div class="field" id="edgeVoiceField">
         <label>TTS 音色 <span class="hint">選好可按試聽</span></label>
         <div class="key-row">
           <select id="ttsVoice">
