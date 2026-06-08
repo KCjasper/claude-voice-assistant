@@ -167,6 +167,14 @@ ipcMain.handle('config:test-connection', async () => {
   return await store.testConnection();
 });
 
+// ========== IPC：通用加密 secret（搜尋 key 等）==========
+ipcMain.handle('config:save-secret', async (event, name, value) => {
+  try { store.saveSecret(name, value); return { ok: true }; }
+  catch (e) { return { ok: false, error: e.message }; }
+});
+ipcMain.handle('config:has-secret', async (event, name) => store.hasSecret(name));
+ipcMain.handle('config:clear-secret', async (event, name) => { store.clearSecret(name); return { ok: true }; });
+
 // ========== IPC：錄音檔儲存 ==========
 function getRecordingDir() {
   const dir = path.join(app.getPath('temp'), 'voice-assistant', 'recordings');
@@ -217,6 +225,7 @@ ipcMain.handle('stt:transcribe', async (event, wavPath, opts) => {
     model,
     language: (opts && opts.language) || 'zh',
     prompt: opts && opts.prompt,
+    gpu: prefs.sttUseGpu !== false,
     onProgress: (p) => {
       try { sender.send('stt:progress', p); } catch {}
     },

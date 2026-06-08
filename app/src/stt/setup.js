@@ -7,8 +7,11 @@ const https = require('https');
 const { app } = require('electron');
 const AdmZip = require('adm-zip');
 
-const BIN_DIR = () => path.join(app.getPath('userData'), 'bin');
+const BIN_DIR = () => path.join(app.getPath('userData'), 'bin');           // CPU 版
+const BIN_DIR_CUDA = () => path.join(app.getPath('userData'), 'bin-cuda'); // GPU 版
 const MODEL_DIR = () => path.join(app.getPath('userData'), 'models');
+
+const REPO = 'ggml-org/whisper.cpp';
 
 const MODEL_URLS = {
   tiny:        'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin',
@@ -46,9 +49,8 @@ function findWhisperExe(rootDir) {
   return null;
 }
 
-function isReady() {
-  const exe = findWhisperExe(BIN_DIR());
-  return !!exe;
+function isReady(gpu = false) {
+  return !!findWhisperExe(gpu ? BIN_DIR_CUDA() : BIN_DIR());
 }
 
 function modelPath(name = 'medium-q5') {
@@ -106,45 +108,55 @@ function downloadStream(url, destPath, onProgress, _depth = 0) {
   });
 }
 
-// 從 GitHub API 找 whisper.cpp 最新 release 的 Windows x64 binary
-async function getWhisperBinaryUrl() {
-  const url = 'https://api.github.com/repos/ggerganov/whisper.cpp/releases/latest';
-  const res = await fetch(url, { headers: { 'User-Agent': 'VoiceAssistant/0.1' } });
-  if (!res.ok) throw new Error(`GitHub API: ${res.status}`);
-  const data = await res.json();
+// 透過 releases atom feed + expanded_assets HTML 找下載網址（不走會被限流的 GitHub API）
+async function getWhisperBinaryUrl(gpu) {
+  const H = { 'User-Agent': 'VoiceAssistant/0.1' };
 
-  // 偏好順序：blas-bin-x64 (with OpenBLAS) > bin-x64
-  const preferred = ['whisper-blas-bin-x64.zip', 'whisper-bin-x64.zip', 'whisper-cli-x64.zip'];
-  for (const name of preferred) {
-    const asset = data.assets.find(a => a.name === name);
-    if (asset) return { url: asset.browser_download_url, name, version: data.tag_name };
+  // 1) 最新版號
+  const atom = await (await fetch(`https://github.com/${REPO}/releases.atom`, { headers: H })).text();
+  const tag = (atom.match(/releases\/tag\/([^<"]+)/) || [])[1];
+  if (!tag) throw new Error('找不到 whisper 版本');
+
+  // 2) 該版資產清單
+  const html = await (await fetch(`https://github.com/${REPO}/releases/expanded_assets/${tag}`, { headers: H })).text();
+  const esc = tag.replace(/[.]/g, '\\.');
+  const names = [...html.matchAll(new RegExp(`/download/${esc}/([^"]+)`, 'g'))].map((m) => m[1]);
+
+  let asset;
+  if (gpu) {
+    // 優先 CUDA 12.x，其次 11.x
+    asset = names.find((n) => /cublas-12.*x64\.zip$/.test(n))
+         || names.find((n) => /cublas-11.*x64\.zip$/.test(n));
   }
-  // Fallback：找任何含 "x64" 與 ".zip" 的
-  const fallback = data.assets.find(a => /x64/.test(a.name) && a.name.endsWith('.zip'));
-  if (fallback) return { url: fallback.browser_download_url, name: fallback.name, version: data.tag_name };
+  if (!asset) {
+    asset = names.find((n) => /blas-bin-x64\.zip$/.test(n))
+         || names.find((n) => /whisper-bin-x64\.zip$/.test(n));
+  }
+  if (!asset) throw new Error('找不到適合的 Windows x64 binary');
 
-  throw new Error('找不到適合的 Windows x64 binary');
+  return { url: `https://github.com/${REPO}/releases/download/${tag}/${asset}`, name: asset, version: tag };
 }
 
-async function ensureBinary(onProgress) {
-  if (isReady()) return findWhisperExe(BIN_DIR());
+async function ensureBinary(onProgress, gpu = false) {
+  const dir = gpu ? BIN_DIR_CUDA() : BIN_DIR();
+  if (isReady(gpu)) return findWhisperExe(dir);
 
-  if (onProgress) onProgress({ stage: 'binary', step: 'fetch-url' });
-  const { url, name, version } = await getWhisperBinaryUrl();
+  if (onProgress) onProgress({ stage: 'binary', step: 'fetch-url', gpu });
+  const { url, name, version } = await getWhisperBinaryUrl(gpu);
 
-  if (onProgress) onProgress({ stage: 'binary', step: 'download', name, version });
-  fs.mkdirSync(BIN_DIR(), { recursive: true });
-  const zipPath = path.join(BIN_DIR(), name);
+  if (onProgress) onProgress({ stage: 'binary', step: 'download', name, version, gpu });
+  fs.mkdirSync(dir, { recursive: true });
+  const zipPath = path.join(dir, name);
   await downloadStream(url, zipPath, (p) => {
-    if (onProgress) onProgress({ stage: 'binary', step: 'download', ...p, version });
+    if (onProgress) onProgress({ stage: 'binary', step: 'download', ...p, version, gpu });
   });
 
-  if (onProgress) onProgress({ stage: 'binary', step: 'extract' });
+  if (onProgress) onProgress({ stage: 'binary', step: 'extract', gpu });
   const zip = new AdmZip(zipPath);
-  zip.extractAllTo(BIN_DIR(), true);
+  zip.extractAllTo(dir, true);
   try { fs.unlinkSync(zipPath); } catch {}
 
-  const exe = findWhisperExe(BIN_DIR());
+  const exe = findWhisperExe(dir);
   if (!exe) throw new Error('解壓後找不到 whisper-cli.exe');
   return exe;
 }
@@ -168,6 +180,7 @@ module.exports = {
   modelExists,
   modelPath,
   BIN_DIR,
+  BIN_DIR_CUDA,
   MODEL_DIR,
   findWhisperExe,
 };

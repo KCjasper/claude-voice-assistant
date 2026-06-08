@@ -17,7 +17,30 @@ const DEFAULT_PREFS = {
   pttHotkey: 'Control+Space',
   monthlyCapUsd: 50,
   modelRouting: true,
+  searchProvider: 'brave',     // 'brave' | 'google'
+  googleCx: '',                // Google Custom Search 引擎 ID（用 google 時才需要）
+  sttUseGpu: true,             // 用 GPU (CUDA) 跑 Whisper；失敗會自動退回 CPU
+  jarvisMode: false,           // 英文 Jarvis 人格（英國管家口吻、英文回答）
 };
+
+// ===== 通用加密 secret（搜尋 key、未來 OAuth token 等）=====
+function secretFile(name) {
+  const safe = String(name).replace(/[^a-z0-9_-]/gi, '_');
+  return path.join(CONFIG_DIR(), `secret-${safe}.enc`);
+}
+function saveSecret(name, value) {
+  if (!safeStorage.isEncryptionAvailable()) throw new Error('系統加密不可用');
+  if (!value) throw new Error('內容為空');
+  fs.writeFileSync(secretFile(name), safeStorage.encryptString(String(value)));
+  return true;
+}
+function loadSecret(name) {
+  const f = secretFile(name);
+  if (!fs.existsSync(f) || !safeStorage.isEncryptionAvailable()) return null;
+  try { return safeStorage.decryptString(fs.readFileSync(f)); } catch { return null; }
+}
+function hasSecret(name) { return fs.existsSync(secretFile(name)); }
+function clearSecret(name) { try { fs.unlinkSync(secretFile(name)); } catch {} }
 
 // ===== API Key（加密）=====
 
@@ -113,5 +136,9 @@ module.exports = {
   loadPrefs,
   savePrefs,
   testConnection,
+  saveSecret,
+  loadSecret,
+  hasSecret,
+  clearSecret,
   DEFAULT_PREFS,
 };

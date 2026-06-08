@@ -23,6 +23,11 @@ contextBridge.exposeInMainWorld('api', {
   clearApiKey: () => ipcRenderer.invoke('config:clear-api-key'),
   testConnection: () => ipcRenderer.invoke('config:test-connection'),
 
+  // ===== 通用加密 secret（搜尋 key 等）=====
+  saveSecret: (name, value) => ipcRenderer.invoke('config:save-secret', name, value),
+  hasSecret: (name) => ipcRenderer.invoke('config:has-secret', name),
+  clearSecret: (name) => ipcRenderer.invoke('config:clear-secret', name),
+
   // ===== 音訊 =====
   saveRecording: (uint8) => ipcRenderer.invoke('audio:save-recording', uint8),
 

@@ -121,16 +121,22 @@ async function stopRecording() {
   }
 }
 
-// ===== 交給 Claude（Claw Router）處理 =====
+// ===== 交給 Claude（Claw Router）處理 — 串流邊生成邊念 =====
+let activeUserText = '';
+
 async function askClaude(userText) {
+  activeUserText = userText;
+  resetSpeakQueue();
   setState('thinking', {
     detail: 'Claude 思考中⋯',
     transcript: { speaker: 'YOU', body: userText },
   });
 
+  // 句子會在 onAiProgress 的 phase:'sentence' 進到 TTS 佇列邊念
   const res = await window.api.chat(userText);
 
   if (!res.ok) {
+    resetSpeakQueue();
     setState('idle', {
       detail: `出錯了：${res.error}`,
       transcript: { speaker: 'YOU', body: userText },
@@ -138,13 +144,87 @@ async function askClaude(userText) {
     return;
   }
 
-  const reply = res.text || '（Claude 沒有回覆內容）';
-  // 把 Claude 的回覆念出來（youSaid 保留你說的話顯示）
-  await speak(reply, { youSaid: userText });
+  // 等佇列把剩下的句子念完
+  await waitQueueDrain();
+
+  if (!spokeAnything) {
+    // 沒有任何句子被串流出來 → 退回一次把整段念出來
+    await speak(res.text || '（Claude 沒有回覆內容）', { youSaid: userText });
+  } else {
+    setState('idle', { detail: '✓ 完成', transcript: { speaker: 'CLAUDE', body: res.text || '' } });
+  }
 }
 
-// ===== TTS 播放 =====
+// ===== TTS 佇列（pipelined：播當前句時先合成下一句）=====
 let currentAudio = null;
+let speakQueue = [];        // 尚未合成的句子
+let synthAhead = null;      // 預先合成中的下一句 { text, promise }
+let draining = false;
+let spokeAnything = false;
+
+function resetSpeakQueue() {
+  stopSpeaking();
+  speakQueue = [];
+  synthAhead = null;
+  draining = false;
+  spokeAnything = false;
+}
+
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+function queueBusy() { return draining || speakQueue.length > 0 || !!synthAhead; }
+
+// 輪詢等到佇列排空；多等一拍接住可能還在途中的最後一句 IPC 事件
+async function waitQueueDrain() {
+  while (queueBusy()) await sleep(80);
+  await sleep(150);
+  while (queueBusy()) await sleep(80);
+}
+
+function enqueueSentence(text) {
+  if (!text) return;
+  spokeAnything = true;
+  speakQueue.push(text);
+  if (!draining) drainQueue();
+}
+
+function synth(text) {
+  return window.api.speak(text).then(res => (res.ok ? res.audioBase64 : null));
+}
+
+async function drainQueue() {
+  draining = true;
+  while (speakQueue.length > 0 || synthAhead) {
+    let text, b64;
+    if (synthAhead) {
+      ({ text } = synthAhead);
+      b64 = await synthAhead.promise;
+      synthAhead = null;
+    } else {
+      text = speakQueue.shift();
+      b64 = await synth(text);
+    }
+    // 先開始合成下一句（與播放當前句平行）
+    if (speakQueue.length > 0) {
+      const next = speakQueue.shift();
+      synthAhead = { text: next, promise: synth(next) };
+    }
+    if (b64) {
+      setState('speaking', { transcript: { speaker: 'CLAUDE', body: text } });
+      await playAudioBlocking(b64);
+    }
+  }
+  draining = false;
+}
+
+function playAudioBlocking(b64) {
+  return new Promise((resolve) => {
+    const audio = new Audio('data:audio/mp3;base64,' + b64);
+    currentAudio = audio;
+    audio.onended = () => { currentAudio = null; resolve(); };
+    audio.onerror = () => { currentAudio = null; resolve(); };
+    audio.play().catch(() => { currentAudio = null; resolve(); });
+  });
+}
 
 function stopSpeaking() {
   if (currentAudio) {
@@ -153,41 +233,24 @@ function stopSpeaking() {
   }
 }
 
+// 單段直接念（fallback / 測試用）
 async function speak(text, opts = {}) {
   if (!text) return;
   stopSpeaking();
-
   setState('thinking', { detail: '合成語音中⋯', transcript: { speaker: 'YOU', body: opts.youSaid || text } });
   const res = await window.api.speak(text);
   if (!res.ok) {
-    setState('idle', { detail: `語音合成失敗：${res.error}`, transcript: { speaker: 'YOU', body: opts.youSaid || text } });
+    setState('idle', { detail: `語音合成失敗：${res.error}` });
     return;
   }
-
-  const audio = new Audio('data:audio/mp3;base64,' + res.audioBase64);
-  currentAudio = audio;
-
-  audio.onended = () => {
-    currentAudio = null;
-    setState('idle', { detail: '✓ 完成', transcript: { speaker: 'CLAUDE', body: text } });
-  };
-  audio.onerror = () => {
-    currentAudio = null;
-    setState('idle', { detail: '播放失敗' });
-  };
-
   setState('speaking', { transcript: { speaker: 'CLAUDE', body: text } });
-  try {
-    await audio.play();
-  } catch (e) {
-    currentAudio = null;
-    setState('idle', { detail: `播放失敗：${e.message}` });
-  }
+  await playAudioBlocking(res.audioBase64);
+  setState('idle', { detail: '✓ 完成', transcript: { speaker: 'CLAUDE', body: text } });
 }
 
 async function toggleRecording() {
-  // 如果正在說話，先打斷它，不要錄音
-  if (currentAudio) { stopSpeaking(); setState('idle', { clearTranscript: false }); return; }
+  // 正在說話 → 打斷（清空佇列）
+  if (currentAudio || draining) { resetSpeakQueue(); setState('idle', { clearTranscript: false }); return; }
   if (recorder.isRecording()) await stopRecording();
   else await startRecording();
 }
@@ -235,12 +298,14 @@ const TOOL_LABELS = {
   fetch_url: '查網路資料',
 };
 window.api.onAiProgress((p) => {
-  if (p.phase === 'tool') {
+  if (p.phase === 'sentence') {
+    enqueueSentence(p.text);            // 串流出來的整句 → 進佇列邊念
+  } else if (p.phase === 'tool') {
     const label = TOOL_LABELS[p.name] || p.name;
     const target = p.args && (p.args.path || p.args.url) ? `：${p.args.path || p.args.url}` : '';
-    setState('thinking', { detail: `Claude 正在${label}${target}` });
+    if (!draining) setState('thinking', { detail: `Claude 正在${label}${target}` });
   } else if (p.phase === 'thinking') {
-    setState('thinking', { detail: 'Claude 思考中⋯' });
+    if (!draining) setState('thinking', { detail: 'Claude 思考中⋯' });
   }
 });
 

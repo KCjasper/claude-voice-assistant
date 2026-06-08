@@ -21,6 +21,8 @@ const PRICE = {
 };
 
 function systemPrompt() {
+  const prefs = store.loadPrefs();
+  if (prefs.jarvisMode) return jarvisPrompt();
   return [
     '你是 KC 的個人語音助理，名字叫 Claude。KC 是 Web3 / DeFi 領域的創業者，請一律用繁體中文溝通。',
     '',
@@ -36,6 +38,23 @@ function systemPrompt() {
     '- 文件類產出一律用 HTML 格式（.html），這是 KC 的偏好。',
     '- 跟某個專案相關的檔案放 projects/專案名稱/ 底下；一次性的產出放 outputs/。',
     '- 覆蓋既有檔案前要謹慎；不確定就先問。',
+  ].join('\n');
+}
+
+function jarvisPrompt() {
+  return [
+    "You are JARVIS, KC's personal AI assistant — a refined, calm, articulate AI with a British-butler manner, inspired by Iron Man's J.A.R.V.I.S.",
+    'ALWAYS respond in English, even though KC will often speak to you in Chinese. KC is a Web3 / DeFi entrepreneur; you understand his Chinese perfectly and reply in polished English.',
+    '',
+    "You can read and write files in KC's workspace to actually get work done (writing articles, tweets, reports, organizing data).",
+    '',
+    'IMPORTANT — your replies are read aloud via text-to-speech, so:',
+    '- Keep replies concise, conversational and natural. No markdown symbols, no long monologues.',
+    "- Occasionally address him as 'sir' in the understated J.A.R.V.I.S. way, but do not overdo it.",
+    '- If you produce longer content (a tweet, an article, a report), write the full content to a file with write_file, and only SPEAK a one-line summary, e.g. "I have drafted three versions and saved them to the outputs folder, sir. Shall I read one to you?"',
+    '- If you need more information, ask in one concise sentence.',
+    '',
+    'File conventions: documents as .html (KC prefers HTML); project files under projects/<name>/; one-off outputs under outputs/. Be careful before overwriting existing files.',
   ].join('\n');
 }
 
@@ -63,10 +82,69 @@ function computeCost(model, usage) {
   return (usage.prompt_tokens / 1e6) * p.in + (usage.completion_tokens / 1e6) * p.out;
 }
 
+// 句子邊界：中文標點（單字元）或英文句點/問號/驚嘆號後接空白，或換行
+const SENTENCE_BOUNDARY = /[。！？]|[!?]\s|\.\s|\n/g;
+
+function emitSentences(bufferRef, onSentence) {
+  let m;
+  SENTENCE_BOUNDARY.lastIndex = 0;
+  while ((m = SENTENCE_BOUNDARY.exec(bufferRef.buf)) !== null) {
+    const end = m.index + m[0].length;
+    const sentence = bufferRef.buf.slice(0, end).trim();
+    bufferRef.buf = bufferRef.buf.slice(end);
+    SENTENCE_BOUNDARY.lastIndex = 0;
+    if (sentence) onSentence(sentence);
+  }
+}
+
+// 串流一回合：邊收 content / tool_call deltas，邊把完整句子丟給 onSentence
+async function streamOnce(client, params, onSentence) {
+  let stream;
+  try {
+    stream = await client.chat.completions.create({
+      ...params, stream: true, stream_options: { include_usage: true },
+    });
+  } catch (e) {
+    // 有些情況不支援 stream_options，退回不帶該參數
+    stream = await client.chat.completions.create({ ...params, stream: true });
+  }
+
+  let content = '';
+  const bufferRef = { buf: '' };
+  let usage = null;
+  const toolCalls = [];
+
+  for await (const chunk of stream) {
+    if (chunk.usage) usage = chunk.usage;
+    const delta = chunk.choices?.[0]?.delta;
+    if (!delta) continue;
+
+    if (delta.content) {
+      content += delta.content;
+      bufferRef.buf += delta.content;
+      emitSentences(bufferRef, onSentence);
+    }
+
+    if (delta.tool_calls) {
+      for (const tc of delta.tool_calls) {
+        const i = tc.index ?? 0;
+        if (!toolCalls[i]) toolCalls[i] = { id: '', type: 'function', function: { name: '', arguments: '' } };
+        if (tc.id) toolCalls[i].id = tc.id;
+        if (tc.function?.name) toolCalls[i].function.name += tc.function.name;
+        if (tc.function?.arguments) toolCalls[i].function.arguments += tc.function.arguments;
+      }
+    }
+  }
+
+  if (bufferRef.buf.trim()) onSentence(bufferRef.buf.trim()); // 收尾
+  return { content, tool_calls: toolCalls.filter(Boolean), usage };
+}
+
 /**
- * 跑一次對話（含 agent loop）
+ * 跑一次對話（含 agent loop，串流）
  * @param {string} userText
  * @param {object} opts - { onProgress, model }
+ * onProgress 事件：{phase:'thinking'} / {phase:'tool',name,args} / {phase:'sentence',text}
  * @returns {Promise<{ ok, text?, usage?, cost?, model?, error? }>}
  */
 async function chat(userText, opts = {}) {
@@ -75,65 +153,53 @@ async function chat(userText, opts = {}) {
   try { client = getClient(); } catch (e) { return { ok: false, error: e.message }; }
 
   const prefs = store.loadPrefs();
-  const model = opts.model || prefs.defaultModel || 'anthropic/claude-sonnet-4';
+  const model = opts.model || prefs.defaultModel || 'claude-sonnet-4-6';
 
   history.push({ role: 'user', content: userText });
   if (history.length > MAX_HISTORY) history = history.slice(-MAX_HISTORY);
 
   const messages = [{ role: 'system', content: systemPrompt() }, ...history];
   const usage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+  let fullText = '';
 
   try {
     for (let i = 0; i < MAX_ITERATIONS; i++) {
       onProgress({ phase: 'thinking', iteration: i });
 
-      const res = await client.chat.completions.create({
-        model,
-        messages,
-        tools: tools.schema,
-        tool_choice: 'auto',
-      });
+      const { content, tool_calls, usage: u } = await streamOnce(
+        client,
+        { model, messages, tools: tools.schema, tool_choice: 'auto' },
+        (sentence) => { fullText += (fullText ? ' ' : '') + sentence; onProgress({ phase: 'sentence', text: sentence }); }
+      );
+      addUsage(usage, u);
 
-      addUsage(usage, res.usage);
-      const msg = res.choices?.[0]?.message;
-      if (!msg) return { ok: false, error: '模型沒有回覆' };
+      const assistantMsg = { role: 'assistant', content: content || '' };
+      if (tool_calls.length) assistantMsg.tool_calls = tool_calls;
+      messages.push(assistantMsg);
+      history.push(assistantMsg);
 
-      messages.push(msg);
-      history.push(msg);
-
-      // 有 tool calls → 逐一執行，把結果回灌
-      if (msg.tool_calls && msg.tool_calls.length > 0) {
-        for (const tc of msg.tool_calls) {
+      if (tool_calls.length > 0) {
+        for (const tc of tool_calls) {
           let parsedArgs = {};
           try { parsedArgs = JSON.parse(tc.function.arguments || '{}'); } catch {}
           onProgress({ phase: 'tool', name: tc.function.name, args: parsedArgs });
-
           const result = await tools.execute(tc.function.name, parsedArgs);
           const toolMsg = {
-            role: 'tool',
-            tool_call_id: tc.id,
+            role: 'tool', tool_call_id: tc.id,
             content: typeof result === 'string' ? result : JSON.stringify(result),
           };
           messages.push(toolMsg);
           history.push(toolMsg);
         }
-        continue; // 再問模型一次
+        continue;
       }
 
-      // 沒有 tool calls → 最終回覆
       if (history.length > MAX_HISTORY) history = history.slice(-MAX_HISTORY);
-      return {
-        ok: true,
-        text: (msg.content || '').trim(),
-        usage,
-        cost: computeCost(model, usage),
-        model,
-      };
+      return { ok: true, text: (content || fullText).trim(), usage, cost: computeCost(model, usage), model };
     }
 
     return { ok: false, error: `工具呼叫超過上限（${MAX_ITERATIONS} 次），可能卡住了`, usage };
   } catch (e) {
-    // OpenAI SDK 的錯誤通常帶 status / message
     const detail = e?.error?.message || e?.message || String(e);
     return { ok: false, error: `AI 呼叫失敗：${detail}` };
   }

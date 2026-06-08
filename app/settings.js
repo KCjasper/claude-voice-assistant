@@ -13,6 +13,7 @@ const els = {
   testResult: $('testResult'),
   defaultModel: $('defaultModel'),
   modelRouting: $('modelRouting'),
+  jarvisMode: $('jarvisMode'),
   ttsVoice: $('ttsVoice'),
   ttsRate: $('ttsRate'),
   rateValue: $('rateValue'),
@@ -20,6 +21,22 @@ const els = {
   close: $('btnClose'),
   closeFoot: $('btnCloseFoot'),
   saveAll: $('btnSaveAll'),
+  // 搜尋
+  searchProvider: $('searchProvider'),
+  searchKey: $('searchKey'),
+  searchKeyStatus: $('searchKeyStatus'),
+  revealSearch: $('btnRevealSearch'),
+  googleCxField: $('googleCxField'),
+  googleCx: $('googleCx'),
+  saveSearch: $('btnSaveSearch'),
+  clearSearch: $('btnClearSearch'),
+  searchHint: $('searchHint'),
+  previewVoice: $('btnPreviewVoice'),
+};
+
+const SEARCH_HINTS = {
+  brave: '到 brave.com/search/api 註冊 → 拿 Subscription Token（免費方案 2000 次/月）',
+  google: '到 Google Cloud 開啟 Custom Search API 拿 API Key，再到 programmablesearchengine.google.com 建搜尋引擎拿 cx（設定為搜尋整個網路）',
 };
 
 // ===== 載入既有設定 =====
@@ -28,6 +45,7 @@ async function loadAll() {
   els.baseUrl.value = prefs.baseUrl;
   els.defaultModel.value = prefs.defaultModel;
   els.modelRouting.checked = !!prefs.modelRouting;
+  els.jarvisMode.checked = !!prefs.jarvisMode;
   els.ttsVoice.value = prefs.ttsVoice;
   els.ttsRate.value = prefs.ttsRate;
   els.rateValue.textContent = `${Number(prefs.ttsRate).toFixed(2)}×`;
@@ -42,6 +60,33 @@ async function loadAll() {
     els.keyStatus.textContent = '尚未設定';
     els.keyStatus.className = 'key-status';
   }
+
+  // 搜尋設定
+  els.searchProvider.value = prefs.searchProvider || 'brave';
+  els.googleCx.value = prefs.googleCx || '';
+  updateSearchProviderUI();
+  await refreshSearchKeyStatus();
+}
+
+function updateSearchProviderUI() {
+  const provider = els.searchProvider.value;
+  els.googleCxField.style.display = provider === 'google' ? '' : 'none';
+  els.searchHint.textContent = SEARCH_HINTS[provider] || '';
+}
+
+async function refreshSearchKeyStatus() {
+  const provider = els.searchProvider.value;
+  const secretName = provider === 'google' ? 'googleSearchKey' : 'braveSearchKey';
+  const has = await window.api.hasSecret(secretName);
+  if (has) {
+    els.searchKeyStatus.textContent = '✓ 已加密儲存';
+    els.searchKeyStatus.className = 'key-status ok';
+    els.searchKey.placeholder = '已儲存 · 要更換才需重新輸入';
+  } else {
+    els.searchKeyStatus.textContent = '尚未設定';
+    els.searchKeyStatus.className = 'key-status';
+    els.searchKey.placeholder = '貼上搜尋 API Key';
+  }
 }
 
 // ===== 顯示 / 隱藏 Key =====
@@ -52,6 +97,40 @@ els.reveal.addEventListener('click', () => {
 // ===== 即時調整速度顯示 =====
 els.ttsRate.addEventListener('input', () => {
   els.rateValue.textContent = `${Number(els.ttsRate.value).toFixed(2)}×`;
+});
+
+// ===== Jarvis 模式：勾選時自動帶入 Ryan 英國男聲 =====
+els.jarvisMode.addEventListener('change', () => {
+  if (els.jarvisMode.checked) {
+    els.ttsVoice.value = 'en-GB-RyanNeural';
+    showResult('ok', 'Jarvis 模式：已自動選 Ryan 英國男聲。按試聽聽聽看，記得按「儲存全部設定」。');
+  }
+});
+
+// ===== 試聽（用目前選的音色 + 速度，不必先儲存）=====
+let previewAudio = null;
+els.previewVoice.addEventListener('click', async () => {
+  if (previewAudio) { try { previewAudio.pause(); } catch {} previewAudio = null; }
+  const voice = els.ttsVoice.value;
+  const rate = parseFloat(els.ttsRate.value);
+  els.previewVoice.textContent = '⟳ 合成中';
+  els.previewVoice.disabled = true;
+  try {
+    const sample = '你好，我是你的語音助理，這是這個聲音的試聽。';
+    const res = await window.api.speak(sample, { voice, rate });
+    if (res.ok) {
+      previewAudio = new Audio('data:audio/mp3;base64,' + res.audioBase64);
+      previewAudio.onended = () => { previewAudio = null; };
+      await previewAudio.play();
+    } else {
+      showResult('err', `試聽失敗：${res.error}`);
+    }
+  } catch (e) {
+    showResult('err', `試聽失敗：${e.message}`);
+  } finally {
+    els.previewVoice.textContent = '▶ 試聽';
+    els.previewVoice.disabled = false;
+  }
 });
 
 // ===== 儲存 Key =====
@@ -101,15 +180,59 @@ els.clearKey.addEventListener('click', async () => {
   showResult('err', 'Key 已清除。');
 });
 
+// ===== 搜尋：切換服務 / 顯示隱藏 =====
+els.searchProvider.addEventListener('change', async () => {
+  updateSearchProviderUI();
+  await refreshSearchKeyStatus();
+});
+els.revealSearch.addEventListener('click', () => {
+  els.searchKey.type = els.searchKey.type === 'password' ? 'text' : 'password';
+});
+
+// ===== 搜尋：儲存 =====
+els.saveSearch.addEventListener('click', async () => {
+  const provider = els.searchProvider.value;
+  await window.api.savePrefs({ searchProvider: provider, googleCx: els.googleCx.value.trim() });
+
+  const raw = els.searchKey.value.trim();
+  if (raw) {
+    const secretName = provider === 'google' ? 'googleSearchKey' : 'braveSearchKey';
+    const res = await window.api.saveSecret(secretName, raw);
+    if (res.ok) {
+      els.searchKey.value = '';
+      els.searchKey.type = 'password';
+      await refreshSearchKeyStatus();
+      showResult('ok', '✓ 搜尋設定已儲存。可以對語音助理說「上網查⋯」測試。');
+    } else {
+      showResult('err', `搜尋 Key 儲存失敗：${res.error}`);
+    }
+  } else {
+    showResult('ok', '✓ 搜尋設定已儲存（Key 未變更）。');
+  }
+});
+
+// ===== 搜尋：清除 Key =====
+els.clearSearch.addEventListener('click', async () => {
+  const provider = els.searchProvider.value;
+  const secretName = provider === 'google' ? 'googleSearchKey' : 'braveSearchKey';
+  if (!confirm('確定要清除這個搜尋 API Key？')) return;
+  await window.api.clearSecret(secretName);
+  await refreshSearchKeyStatus();
+  showResult('err', '搜尋 Key 已清除。');
+});
+
 // ===== 儲存全部 =====
 els.saveAll.addEventListener('click', async () => {
   await window.api.savePrefs({
     baseUrl: els.baseUrl.value.trim(),
     defaultModel: els.defaultModel.value,
     modelRouting: els.modelRouting.checked,
+    jarvisMode: els.jarvisMode.checked,
     ttsVoice: els.ttsVoice.value,
     ttsRate: parseFloat(els.ttsRate.value),
     monthlyCapUsd: parseFloat(els.monthlyCap.value) || 0,
+    searchProvider: els.searchProvider.value,
+    googleCx: els.googleCx.value.trim(),
   });
   showResult('ok', '✓ 設定已儲存。');
 });

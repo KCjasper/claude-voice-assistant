@@ -12,26 +12,53 @@ const DEFAULT_MODEL = 'medium-q5';
 /**
  * 轉錄一個 WAV 檔
  * @param {string} wavPath - 16k 單聲道 16-bit PCM WAV 路徑
- * @param {object} opts - { model, language, onProgress, prompt }
- * @returns {Promise<{ ok: boolean, text?: string, error?: string }>}
+ * @param {object} opts - { model, language, onProgress, prompt, gpu }
+ * @returns {Promise<{ ok, text?, error?, ms?, gpu? }>}
  */
 async function transcribe(wavPath, opts = {}) {
   const model = opts.model || DEFAULT_MODEL;
   const language = opts.language || 'zh';   // 繁中
   const onProgress = opts.onProgress || (() => {});
+  let gpu = opts.gpu !== false;             // 預設用 GPU
 
   try {
     if (!fs.existsSync(wavPath)) return { ok: false, error: `找不到錄音檔：${wavPath}` };
 
-    onProgress({ phase: 'ensure-binary' });
-    const exe = await setup.ensureBinary(onProgress);
+    onProgress({ phase: 'ensure-binary', gpu });
+    let exe;
+    try {
+      exe = await setup.ensureBinary(onProgress, gpu);
+    } catch (e) {
+      // GPU 版抓取/解壓失敗 → 自動退回 CPU 版
+      if (gpu) {
+        gpu = false;
+        onProgress({ phase: 'gpu-fallback' });
+        exe = await setup.ensureBinary(onProgress, false);
+      } else {
+        throw e;
+      }
+    }
 
     onProgress({ phase: 'ensure-model', model });
     const modelPath = await setup.ensureModel(model, onProgress);
 
-    onProgress({ phase: 'transcribe' });
-    const text = await runWhisper(exe, modelPath, wavPath, { language, prompt: opts.prompt });
-    return { ok: true, text };
+    onProgress({ phase: 'transcribe', gpu });
+    const t0 = Date.now();
+    let text;
+    try {
+      text = await runWhisper(exe, modelPath, wavPath, { language, prompt: opts.prompt });
+    } catch (e) {
+      // GPU 執行階段失敗 → 退回 CPU 重試一次
+      if (gpu) {
+        onProgress({ phase: 'gpu-fallback' });
+        const cpuExe = await setup.ensureBinary(onProgress, false);
+        text = await runWhisper(cpuExe, modelPath, wavPath, { language, prompt: opts.prompt });
+        gpu = false;
+      } else {
+        throw e;
+      }
+    }
+    return { ok: true, text, ms: Date.now() - t0, gpu };
   } catch (e) {
     return { ok: false, error: e.message };
   }

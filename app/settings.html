@@ -83,14 +83,52 @@
       <div class="section-title">VOICE</div>
 
       <div class="field">
-        <label>TTS 音色</label>
-        <select id="ttsVoice">
-          <option value="zh-TW-HsiaoChenNeural">HsiaoChen（繁中女聲）</option>
-          <option value="zh-TW-HsiaoYuNeural">HsiaoYu（繁中女聲 · 較年輕）</option>
-          <option value="zh-TW-YunJheNeural">YunJhe（繁中男聲）</option>
-          <option value="zh-CN-XiaoxiaoNeural">Xiaoxiao（簡中女聲）</option>
-          <option value="en-US-AriaNeural">Aria（英文女聲）</option>
-        </select>
+        <label class="checkbox-label">
+          <input type="checkbox" id="jarvisMode">
+          <span>🎩 Jarvis 模式（英文回答 + 英國管家口吻）</span>
+        </label>
+        <div class="hint">開啟後你仍可講中文，Jarvis 會用英文回你。建議搭配 Ryan 英國男聲（勾選時自動帶入）</div>
+      </div>
+
+
+      <div class="field">
+        <label>TTS 音色 <span class="hint">選好可按試聽</span></label>
+        <div class="key-row">
+          <select id="ttsVoice">
+            <optgroup label="台灣（繁中）">
+              <option value="zh-TW-HsiaoChenNeural">曉臻 HsiaoChen（女）</option>
+              <option value="zh-TW-HsiaoYuNeural">曉雨 HsiaoYu（女・年輕）</option>
+              <option value="zh-TW-YunJheNeural">雲哲 YunJhe（男）</option>
+            </optgroup>
+            <optgroup label="中國（簡中）">
+              <option value="zh-CN-XiaoxiaoNeural">曉曉 Xiaoxiao（女）</option>
+              <option value="zh-CN-XiaoyiNeural">曉伊 Xiaoyi（女）</option>
+              <option value="zh-CN-YunxiNeural">雲希 Yunxi（男）</option>
+              <option value="zh-CN-YunjianNeural">雲健 Yunjian（男・渾厚）</option>
+              <option value="zh-CN-YunxiaNeural">雲夏 Yunxia（男・少年）</option>
+              <option value="zh-CN-YunyangNeural">雲揚 Yunyang（男・新聞腔）</option>
+              <option value="zh-CN-liaoning-XiaobeiNeural">曉北 Xiaobei（女・東北腔）</option>
+              <option value="zh-CN-shaanxi-XiaoniNeural">曉妮 Xiaoni（女・陝西腔）</option>
+            </optgroup>
+            <optgroup label="香港（粵語）">
+              <option value="zh-HK-HiuMaanNeural">曉曼 HiuMaan（女）</option>
+              <option value="zh-HK-HiuGaaiNeural">曉佳 HiuGaai（女）</option>
+              <option value="zh-HK-WanLungNeural">雲龍 WanLung（男）</option>
+            </optgroup>
+            <optgroup label="Jarvis 風・男聲">
+              <option value="en-GB-RyanNeural">Ryan 英國男聲（英文限定・最像 Jarvis）</option>
+              <option value="en-GB-ThomasNeural">Thomas 英國男聲（英文限定・沉穩）</option>
+              <option value="en-US-AndrewMultilingualNeural">Andrew 多語男聲（可念中文・沉穩）</option>
+              <option value="en-US-BrianMultilingualNeural">Brian 多語男聲（可念中文・低沉）</option>
+              <option value="en-AU-WilliamMultilingualNeural">William 多語男聲（澳洲腔・可念中文）</option>
+            </optgroup>
+            <optgroup label="英文">
+              <option value="en-US-AriaNeural">Aria（女）</option>
+              <option value="en-US-GuyNeural">Guy（男）</option>
+            </optgroup>
+          </select>
+          <button class="icon-btn" id="btnPreviewVoice" title="試聽" style="width:auto;padding:0 12px;">▶ 試聽</button>
+        </div>
       </div>
 
       <div class="field">
@@ -102,6 +140,39 @@
         <label>Push-to-talk 熱鍵</label>
         <div class="static-value"><kbd>Ctrl</kbd> + <kbd>Space</kbd>（暫時不可改）</div>
       </div>
+    </div>
+
+    <!-- 區段：網路搜尋 -->
+    <div class="section">
+      <div class="section-title">WEB SEARCH</div>
+
+      <div class="field">
+        <label>搜尋服務</label>
+        <select id="searchProvider">
+          <option value="brave">Brave Search（建議，設定簡單）</option>
+          <option value="google">Google Custom Search</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>搜尋 API Key</label>
+        <div class="key-row">
+          <input type="password" id="searchKey" placeholder="貼上搜尋 API Key" autocomplete="off">
+          <button class="icon-btn" id="btnRevealSearch" title="顯示 / 隱藏">👁</button>
+        </div>
+        <div class="key-status" id="searchKeyStatus">尚未設定</div>
+      </div>
+
+      <div class="field" id="googleCxField" style="display:none;">
+        <label>Google 搜尋引擎 ID (cx) <span class="hint">僅 Google 需要</span></label>
+        <input type="text" id="googleCx" placeholder="例如 a1b2c3d4e5f6g7h8i">
+      </div>
+
+      <div class="actions-row">
+        <button class="btn-primary" id="btnSaveSearch">儲存搜尋設定</button>
+        <button class="btn-danger" id="btnClearSearch">清除搜尋 Key</button>
+      </div>
+      <div class="hint" id="searchHint" style="margin-top:6px;"></div>
     </div>
 
     <!-- 區段 4：用量上限 -->

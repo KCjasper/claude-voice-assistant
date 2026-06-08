@@ -6,6 +6,7 @@ const path = require('path');
 const https = require('https');
 const http = require('http');
 const store = require('../config/store');
+const search = require('./search');
 
 // 工作資料夾根目錄：app 位於 <workspace>/projects/voice-assistant/app
 // 往上五層即 workspace 根。可被 prefs.workspaceDir 覆寫。
@@ -84,6 +85,21 @@ const schema = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'web_search',
+      description: '在網路上搜尋即時資訊（新聞、資料、查證）。回傳前幾筆結果的標題、網址、摘要。需要更詳細內容時可再用 fetch_url 抓該網址。',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: '搜尋關鍵字' },
+          count: { type: 'number', description: '要幾筆結果，預設 5，最多 10' },
+        },
+        required: ['query'],
+      },
+    },
+  },
 ];
 
 // ===== 工具實作 =====
@@ -149,6 +165,7 @@ async function execute(name, args) {
       case 'write_file': return writeFile(args);
       case 'list_directory': return listDirectory(args);
       case 'fetch_url': return await fetchUrl(args);
+      case 'web_search': return await search.webSearch(args.query, args.count || 5);
       default: return `錯誤：未知的工具 ${name}`;
     }
   } catch (e) {
