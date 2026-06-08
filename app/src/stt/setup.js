@@ -62,26 +62,52 @@ function modelExists(name = 'medium-q5') {
 }
 
 // HTTPS 下載含 follow redirect + progress
-function downloadStream(url, destPath, onProgress, _depth = 0) {
+function downloadStream(url, destPath, onProgress, _depth = 0, timeoutMs = 120000) {
   return new Promise((resolve, reject) => {
     if (_depth > 5) return reject(new Error('Too many redirects'));
     fs.mkdirSync(path.dirname(destPath), { recursive: true });
-    const tmp = destPath + '.part';
-    const file = fs.createWriteStream(tmp);
 
-    const req = https.get(url, {
+    const tmp = destPath + '.part';
+    let settled = false;
+    let file = null;
+    let req = null;
+
+    const cleanupPartial = () => {
+      try { fs.unlinkSync(tmp); } catch {}
+    };
+    const finish = (fn, value, cleanup = true) => {
+      if (settled) return;
+      settled = true;
+      if (req) req.destroy();
+      if (file) {
+        try { file.destroy(); } catch {}
+      }
+      if (cleanup) cleanupPartial();
+      fn(value);
+    };
+    const fail = (e) => finish(reject, e);
+
+    file = fs.createWriteStream(tmp);
+    file.on('error', (e) => fail(new Error(`Failed to write download: ${e.message}`)));
+
+    req = https.get(url, {
       headers: { 'User-Agent': 'VoiceAssistant/0.1' },
     }, (res) => {
-      // Redirect
+      res.on('error', (e) => fail(new Error(`Download response error: ${e.message}`)));
+
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        file.close();
-        try { fs.unlinkSync(tmp); } catch {}
-        return resolve(downloadStream(res.headers.location, destPath, onProgress, _depth + 1));
+        res.resume();
+        finish(
+          resolve,
+          downloadStream(new URL(res.headers.location, url).href, destPath, onProgress, _depth + 1, timeoutMs),
+          true
+        );
+        return;
       }
       if (res.statusCode !== 200) {
-        file.close();
-        try { fs.unlinkSync(tmp); } catch {}
-        return reject(new Error(`HTTP ${res.statusCode} for ${url}`));
+        res.resume();
+        fail(new Error(`HTTP ${res.statusCode} for ${url}`));
+        return;
       }
 
       const total = parseInt(res.headers['content-length'] || '0', 10);
@@ -92,19 +118,22 @@ function downloadStream(url, destPath, onProgress, _depth = 0) {
       });
       res.pipe(file);
       file.on('finish', () => {
-        file.close(() => {
+        file.close((closeErr) => {
+          if (closeErr) return fail(new Error(`Failed to close download file: ${closeErr.message}`));
           try {
             fs.renameSync(tmp, destPath);
-            resolve(destPath);
-          } catch (e) { reject(e); }
+            finish(resolve, destPath, false);
+          } catch (e) {
+            fail(e);
+          }
         });
       });
     });
-    req.on('error', (e) => {
-      file.close();
-      try { fs.unlinkSync(tmp); } catch {}
-      reject(e);
+
+    req.setTimeout(timeoutMs, () => {
+      fail(new Error(`Download timed out after ${Math.round(timeoutMs / 1000)}s: ${url}`));
     });
+    req.on('error', (e) => fail(new Error(`Download request error: ${e.message}`)));
   });
 }
 
