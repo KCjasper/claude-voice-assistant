@@ -4,8 +4,8 @@
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+const { spawn } = require('child_process');
 const { app } = require('electron');
-const AdmZip = require('adm-zip');
 
 const BIN_DIR = () => path.join(app.getPath('userData'), 'bin');           // CPU 版
 const BIN_DIR_CUDA = () => path.join(app.getPath('userData'), 'bin-cuda'); // GPU 版
@@ -108,6 +108,41 @@ function downloadStream(url, destPath, onProgress, _depth = 0) {
   });
 }
 
+function extractZip(zipPath, destDir, onProgress, timeoutMs = 10 * 60 * 1000) {
+  return new Promise((resolve, reject) => {
+    if (onProgress) onProgress({ stage: 'binary', step: 'extract', tool: 'tar' });
+
+    const child = spawn('tar', ['-xf', zipPath, '-C', destDir], {
+      windowsHide: true,
+    });
+
+    let settled = false;
+    let stderr = '';
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      fn(value);
+    };
+    const timer = setTimeout(() => {
+      try { child.kill(); } catch {}
+      finish(reject, new Error('Whisper binary extraction timed out'));
+    }, timeoutMs);
+
+    child.stderr.on('data', (d) => {
+      stderr += d.toString();
+      if (stderr.length > 4000) stderr = stderr.slice(-4000);
+    });
+    child.on('error', (e) => {
+      finish(reject, new Error(`Failed to start zip extractor: ${e.message}`));
+    });
+    child.on('close', (code) => {
+      if (code === 0) return finish(resolve);
+      finish(reject, new Error(`Whisper binary extraction failed with exit ${code}: ${stderr.slice(-800)}`));
+    });
+  });
+}
+
 // 透過 releases atom feed + expanded_assets HTML 找下載網址（不走會被限流的 GitHub API）
 async function getWhisperBinaryUrl(gpu) {
   const H = { 'User-Agent': 'VoiceAssistant/0.1' };
@@ -151,13 +186,13 @@ async function ensureBinary(onProgress, gpu = false) {
     if (onProgress) onProgress({ stage: 'binary', step: 'download', ...p, version, gpu });
   });
 
-  if (onProgress) onProgress({ stage: 'binary', step: 'extract', gpu });
-  const zip = new AdmZip(zipPath);
-  zip.extractAllTo(dir, true);
-  try { fs.unlinkSync(zipPath); } catch {}
+  await extractZip(zipPath, dir, (p) => {
+    if (onProgress) onProgress({ ...p, version, gpu });
+  });
 
   const exe = findWhisperExe(dir);
   if (!exe) throw new Error('解壓後找不到 whisper-cli.exe');
+  try { fs.unlinkSync(zipPath); } catch {}
   return exe;
 }
 
