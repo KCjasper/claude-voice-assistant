@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>語音助理 — UI 模型</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{height:100%;overflow:hidden;font-family:-apple-system,"Segoe UI","Noto Sans TC",sans-serif;}
+
+  /* 模擬桌面背景 */
+  body{
+    background:
+      radial-gradient(1400px 800px at 15% 25%, #1e293b 0%, transparent 55%),
+      radial-gradient(1200px 700px at 85% 75%, #1e3a8a 0%, transparent 50%),
+      radial-gradient(900px 500px at 50% 50%, #312e81 0%, transparent 60%),
+      linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+    position:relative;
+  }
+
+  /* 桌面假圖示 (左上幾個小方塊模擬) */
+  .desktop-icons{
+    position:absolute;top:40px;left:40px;display:grid;grid-template-columns:repeat(2,80px);gap:24px;
+  }
+  .desktop-icons .icon{
+    width:60px;height:60px;border-radius:14px;
+    background:rgba(255,255,255,0.06);
+    backdrop-filter:blur(8px);
+    border:1px solid rgba(255,255,255,0.08);
+  }
+  .desktop-icons .label{
+    color:rgba(255,255,255,0.5);font-size:11px;text-align:center;margin-top:4px;
+    text-shadow:0 1px 2px rgba(0,0,0,0.5);
+  }
+
+  /* Windows 11 工作列 */
+  .taskbar{
+    position:absolute;bottom:0;left:0;right:0;height:48px;
+    background:rgba(15,23,42,0.7);
+    backdrop-filter:blur(20px);
+    border-top:1px solid rgba(255,255,255,0.08);
+    display:flex;align-items:center;justify-content:center;gap:12px;
+  }
+  .taskbar .tb-icon{
+    width:32px;height:32px;border-radius:6px;background:rgba(255,255,255,0.08);
+  }
+  .taskbar .tray{position:absolute;right:16px;color:rgba(255,255,255,0.6);font-size:12px;display:flex;gap:14px;align-items:center;}
+
+  /* === 語音助理浮動視窗 === */
+  .assistant{
+    position:absolute;
+    right:32px;bottom:80px;
+    width:340px;
+    border-radius:28px;
+    padding:28px 26px 22px;
+    background:
+      linear-gradient(135deg, rgba(255,255,255,0.12) 0%, rgba(96,165,250,0.08) 100%);
+    backdrop-filter:blur(40px) saturate(180%);
+    -webkit-backdrop-filter:blur(40px) saturate(180%);
+    border:1px solid rgba(255,255,255,0.18);
+    box-shadow:
+      0 25px 60px -10px rgba(0,0,0,0.5),
+      0 0 0 1px rgba(255,255,255,0.05) inset,
+      0 0 80px -20px rgba(96,165,250,0.4);
+    transition:all 0.4s cubic-bezier(0.25,0.1,0.25,1.4);
+  }
+
+  /* 拖曳把手 */
+  .drag-handle{
+    width:36px;height:4px;border-radius:2px;
+    background:rgba(255,255,255,0.2);
+    margin:0 auto 18px;
+  }
+
+  /* 中央 Orb（光球） */
+  .orb-stage{
+    position:relative;
+    height:160px;
+    display:flex;align-items:center;justify-content:center;
+    margin-bottom:18px;
+  }
+  .orb{
+    width:96px;height:96px;border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, #93c5fd 0%, #3b82f6 50%, #1e40af 100%);
+    box-shadow:
+      0 0 40px rgba(96,165,250,0.6),
+      0 0 80px rgba(96,165,250,0.3),
+      inset 0 0 20px rgba(255,255,255,0.2);
+    position:relative;z-index:2;
+    transition:all 0.5s ease;
+  }
+  /* 高光 */
+  .orb::before{
+    content:"";position:absolute;top:18%;left:25%;
+    width:30px;height:20px;
+    background:radial-gradient(ellipse, rgba(255,255,255,0.6) 0%, transparent 70%);
+    border-radius:50%;filter:blur(2px);
+  }
+
+  /* 環形光暈 */
+  .ring{
+    position:absolute;top:50%;left:50%;
+    border-radius:50%;
+    border:1.5px solid rgba(96,165,250,0.3);
+    transform:translate(-50%,-50%);
+    pointer-events:none;
+  }
+  .ring.r1{width:120px;height:120px;}
+  .ring.r2{width:150px;height:150px;}
+  .ring.r3{width:180px;height:180px;}
+
+  /* 狀態文字 */
+  .status{
+    text-align:center;color:rgba(255,255,255,0.85);
+    font-size:13px;letter-spacing:0.08em;font-weight:500;
+    margin-bottom:6px;
+  }
+  .status-detail{
+    text-align:center;color:rgba(255,255,255,0.5);
+    font-size:11px;letter-spacing:0.04em;
+    min-height:14px;
+  }
+
+  /* 對話氣泡 */
+  .transcript{
+    margin:18px -4px 14px;padding:14px 16px;
+    background:rgba(0,0,0,0.25);
+    border-radius:16px;
+    border:1px solid rgba(255,255,255,0.06);
+    color:rgba(255,255,255,0.9);
+    font-size:13px;line-height:1.6;
+    max-height:0;opacity:0;overflow:hidden;
+    transition:all 0.4s ease;
+  }
+  .transcript.show{max-height:200px;opacity:1;}
+  .transcript .speaker{
+    font-size:10px;color:#93c5fd;letter-spacing:0.1em;
+    margin-bottom:4px;text-transform:uppercase;
+  }
+
+  /* 底部控制列 */
+  .controls{
+    display:flex;justify-content:space-between;align-items:center;
+    margin-top:8px;padding-top:14px;
+    border-top:1px solid rgba(255,255,255,0.06);
+  }
+  .ctrl-btn{
+    width:32px;height:32px;border-radius:50%;
+    background:rgba(255,255,255,0.06);
+    border:1px solid rgba(255,255,255,0.08);
+    color:rgba(255,255,255,0.6);
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer;font-size:14px;
+    transition:all 0.2s;
+  }
+  .ctrl-btn:hover{background:rgba(96,165,250,0.2);color:#fff;}
+  .meter{color:rgba(255,255,255,0.4);font-size:10px;letter-spacing:0.05em;}
+
+  /* === 狀態：待機 === */
+  .assistant.idle .orb{
+    animation:breathe 3s ease-in-out infinite;
+  }
+  .assistant.idle .ring{opacity:0;}
+  @keyframes breathe{
+    0%,100%{transform:scale(1);box-shadow:0 0 40px rgba(96,165,250,0.6),0 0 80px rgba(96,165,250,0.3),inset 0 0 20px rgba(255,255,255,0.2);}
+    50%{transform:scale(1.08);box-shadow:0 0 60px rgba(96,165,250,0.8),0 0 120px rgba(96,165,250,0.4),inset 0 0 20px rgba(255,255,255,0.3);}
+  }
+
+  /* === 狀態：聽中 === */
+  .assistant.listening .orb{
+    background:radial-gradient(circle at 35% 30%, #bfdbfe 0%, #60a5fa 50%, #2563eb 100%);
+    box-shadow:0 0 60px rgba(147,197,253,0.9),0 0 120px rgba(96,165,250,0.5),inset 0 0 20px rgba(255,255,255,0.4);
+    animation:pulse-fast 0.8s ease-in-out infinite;
+  }
+  .assistant.listening .ring{opacity:1;animation:expand 1.5s ease-out infinite;}
+  .assistant.listening .ring.r1{animation-delay:0s;}
+  .assistant.listening .ring.r2{animation-delay:0.5s;}
+  .assistant.listening .ring.r3{animation-delay:1s;}
+  @keyframes pulse-fast{
+    0%,100%{transform:scale(1);}
+    50%{transform:scale(1.05);}
+  }
+  @keyframes expand{
+    0%{transform:translate(-50%,-50%) scale(0.6);opacity:0.8;}
+    100%{transform:translate(-50%,-50%) scale(1.4);opacity:0;}
+  }
+
+  /* === 狀態：想中 === */
+  .assistant.thinking .orb{
+    background:conic-gradient(from 0deg, #60a5fa, #a78bfa, #60a5fa, #818cf8, #60a5fa);
+    animation:spin 2s linear infinite;
+    box-shadow:0 0 50px rgba(167,139,250,0.7),0 0 100px rgba(96,165,250,0.4),inset 0 0 20px rgba(255,255,255,0.3);
+  }
+  .assistant.thinking .ring{opacity:0.4;}
+  @keyframes spin{
+    0%{transform:rotate(0deg);}
+    100%{transform:rotate(360deg);}
+  }
+
+  /* === 狀態：說中 === */
+  .assistant.speaking .orb{
+    background:radial-gradient(circle at 35% 30%, #dbeafe 0%, #60a5fa 50%, #1d4ed8 100%);
+    animation:wave 0.4s ease-in-out infinite alternate;
+    box-shadow:0 0 70px rgba(147,197,253,1),0 0 140px rgba(96,165,250,0.6),inset 0 0 25px rgba(255,255,255,0.5);
+  }
+  .assistant.speaking .ring{opacity:0.7;animation:wave-ring 0.6s ease-in-out infinite alternate;}
+  @keyframes wave{
+    0%{transform:scale(1) scaleY(0.95);}
+    100%{transform:scale(1.06) scaleY(1.05);}
+  }
+  @keyframes wave-ring{
+    0%{transform:translate(-50%,-50%) scale(0.9);opacity:0.3;}
+    100%{transform:translate(-50%,-50%) scale(1.1);opacity:0.7;}
+  }
+
+  /* === 狀態選擇器（模擬用） === */
+  .state-picker{
+    position:absolute;top:32px;right:32px;
+    display:flex;flex-direction:column;gap:8px;
+    z-index:10;
+  }
+  .state-picker .label{
+    color:rgba(255,255,255,0.5);font-size:11px;
+    letter-spacing:0.1em;text-transform:uppercase;margin-bottom:4px;
+  }
+  .state-picker button{
+    padding:10px 18px;border-radius:10px;
+    background:rgba(255,255,255,0.06);
+    backdrop-filter:blur(20px);
+    border:1px solid rgba(255,255,255,0.1);
+    color:rgba(255,255,255,0.85);
+    font-size:12px;letter-spacing:0.06em;
+    cursor:pointer;text-align:left;min-width:140px;
+    transition:all 0.2s;
+  }
+  .state-picker button:hover{
+    background:rgba(96,165,250,0.2);
+    border-color:rgba(96,165,250,0.4);
+  }
+  .state-picker button.active{
+    background:rgba(96,165,250,0.3);
+    border-color:rgba(96,165,250,0.6);
+    color:#fff;
+    box-shadow:0 0 20px rgba(96,165,250,0.4);
+  }
+
+  .hint{
+    position:absolute;bottom:64px;left:50%;transform:translateX(-50%);
+    color:rgba(255,255,255,0.35);font-size:11px;letter-spacing:0.1em;
+  }
+</style>
+</head>
+<body>
+
+<!-- 模擬桌面 -->
+<div class="desktop-icons">
+  <div><div class="icon"></div><div class="label">Chrome</div></div>
+  <div><div class="icon"></div><div class="label">VS Code</div></div>
+  <div><div class="icon"></div><div class="label">Discord</div></div>
+  <div><div class="icon"></div><div class="label">Cowork</div></div>
+</div>
+
+<!-- 狀態選擇器（給你切換看效果用，真實版不會有） -->
+<div class="state-picker">
+  <div class="label">點選切換狀態</div>
+  <button data-state="idle" class="active">◯ 待機 IDLE</button>
+  <button data-state="listening">◉ 聽中 LISTENING</button>
+  <button data-state="thinking">⟳ 想中 THINKING</button>
+  <button data-state="speaking">▸ 說中 SPEAKING</button>
+</div>
+
+<div class="hint">↑ 這只是模擬用的切換器，真實版會自動隨語音狀態切換</div>
+
+<!-- 模擬 Windows 工作列 -->
+<div class="taskbar">
+  <div class="tb-icon"></div>
+  <div class="tb-icon"></div>
+  <div class="tb-icon"></div>
+  <div class="tb-icon"></div>
+  <div class="tb-icon"></div>
+  <div class="tray">中 · 14:32</div>
+</div>
+
+<!-- 語音助理浮動視窗 -->
+<div class="assistant idle" id="assistant">
+  <div class="drag-handle"></div>
+
+  <div class="orb-stage">
+    <div class="ring r1"></div>
+    <div class="ring r2"></div>
+    <div class="ring r3"></div>
+    <div class="orb"></div>
+  </div>
+
+  <div class="status" id="statusText">待機中 · 喊「Hey Claude」喚醒</div>
+  <div class="status-detail" id="statusDetail">或按住 Ctrl+Space 說話</div>
+
+  <div class="transcript" id="transcript">
+    <div class="speaker">你說</div>
+    <div id="userText">幫我寫一則推文宣布 PerpOS 上線</div>
+  </div>
+
+  <div class="controls">
+    <div style="display:flex;gap:6px;">
+      <div class="ctrl-btn" title="麥克風">🎙</div>
+      <div class="ctrl-btn" title="設定">⚙</div>
+    </div>
+    <div class="meter">今日 $0.12 / 月額 $50</div>
+    <div class="ctrl-btn" title="關閉">×</div>
+  </div>
+</div>
+
+<script>
+  const assistant = document.getElementById('assistant');
+  const statusText = document.getElementById('statusText');
+  const statusDetail = document.getElementById('statusDetail');
+  const transcript = document.getElementById('transcript');
+  const userText = document.getElementById('userText');
+  const buttons = document.querySelectorAll('.state-picker button');
+
+  const states = {
+    idle: {
+      class: 'idle',
+      text: '待機中 · 喊「Hey Claude」喚醒',
+      detail: '或按住 Ctrl+Space 說話',
+      showTranscript: false,
+    },
+    listening: {
+      class: 'listening',
+      text: '我在聽 · LISTENING',
+      detail: '說完後自動送出，或說「好了」結束',
+      showTranscript: false,
+    },
+    thinking: {
+      class: 'thinking',
+      text: 'Claude 思考中 · THINKING',
+      detail: '正在使用工具：寫檔案 / 查資料',
+      showTranscript: true,
+      transcriptSpeaker: '你說',
+      transcriptBody: '幫我寫一則推文宣布 PerpOS 上線',
+    },
+    speaking: {
+      class: 'speaking',
+      text: 'Claude 說話中 · SPEAKING',
+      detail: '說「停」可以打斷',
+      showTranscript: true,
+      transcriptSpeaker: 'Claude 回',
+      transcriptBody: '好的，我寫了三個版本給你選。第一版偏技術、第二版偏行銷、第三版幽默風格⋯',
+    },
+  };
+
+  function setState(name){
+    const s = states[name];
+    assistant.className = 'assistant ' + s.class;
+    statusText.textContent = s.text;
+    statusDetail.textContent = s.detail;
+    if (s.showTranscript) {
+      transcript.classList.add('show');
+      transcript.querySelector('.speaker').textContent = s.transcriptSpeaker;
+      userText.textContent = s.transcriptBody;
+    } else {
+      transcript.classList.remove('show');
+    }
+    buttons.forEach(b => b.classList.toggle('active', b.dataset.state === name));
+  }
+
+  buttons.forEach(b => {
+    b.addEventListener('click', () => setState(b.dataset.state));
+  });
+</script>
+
+</body>
+</html>

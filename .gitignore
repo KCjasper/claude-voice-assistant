@@ -1,0 +1,30 @@
+# ===== 依賴 =====
+node_modules/
+app/node_modules/
+
+# ===== 建置產物 =====
+dist/
+build/
+out/
+*.asar
+
+# ===== 機密（絕對不上傳）=====
+.env
+.env.*
+*.key
+*.pem
+apikey.enc
+secrets.json
+
+# ===== 執行期產物 =====
+*.log
+recordings/
+models/
+bin/
+
+# ===== 作業系統 / 編輯器 =====
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp

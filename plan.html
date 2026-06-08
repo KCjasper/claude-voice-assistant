@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>本地語音 AI 助理 — 計畫書</title>
+<style>
+  :root{
+    --fg:#0f172a;
+    --muted:#64748b;
+    --line:#e2e8f0;
+    --accent:#2563eb;
+    --accent-soft:#dbeafe;
+    --bg:#fafbff;
+    --soft:#f1f5fb;
+    --glow:#60a5fa;
+  }
+  *{box-sizing:border-box;}
+  body{
+    font-family:-apple-system,"Segoe UI","Noto Sans TC",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--fg);line-height:1.75;
+    max-width:920px;margin:0 auto;padding:48px 28px 96px;
+    background:
+      radial-gradient(1200px 600px at -10% -20%, #e0ecff 0%, transparent 60%),
+      radial-gradient(900px 500px at 110% 10%, #eef4ff 0%, transparent 55%),
+      var(--bg);
+  }
+  h1{font-size:32px;font-weight:700;margin:0 0 4px;letter-spacing:-0.02em;}
+  h2{font-size:21px;font-weight:700;margin:44px 0 14px;padding-bottom:8px;border-bottom:2px solid var(--line);}
+  h3{font-size:16px;font-weight:700;margin:22px 0 8px;color:var(--accent);}
+  p{margin:8px 0;}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 6px;}
+  .hero{
+    margin:18px 0 8px;padding:22px 24px;border-radius:18px;
+    background:linear-gradient(135deg, rgba(96,165,250,0.18), rgba(219,234,254,0.55));
+    border:1px solid rgba(96,165,250,0.35);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 8px 30px rgba(37,99,235,0.08);
+  }
+  .hero p{margin:0;font-size:15px;color:#1e3a8a;}
+  table{border-collapse:collapse;width:100%;margin:14px 0;font-size:13.5px;}
+  th,td{border:1px solid var(--line);padding:10px 12px;text-align:left;vertical-align:top;}
+  th{background:var(--soft);font-weight:600;}
+  code{background:var(--soft);padding:1px 6px;border-radius:5px;font-size:13px;color:#1e3a8a;}
+  .card{
+    border:1px solid var(--line);border-radius:12px;
+    padding:16px 18px;margin:12px 0;background:white;
+    box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+  }
+  .card h3{margin-top:0;}
+  .pill{display:inline-block;font-size:11.5px;padding:2px 10px;border-radius:999px;
+    background:var(--accent-soft);color:var(--accent);font-weight:600;letter-spacing:0.02em;}
+  .phase{
+    border-left:4px solid var(--accent);background:white;
+    padding:14px 18px;margin:14px 0;border-radius:0 10px 10px 0;
+    box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+  }
+  .phase h3{margin-top:0;color:var(--fg);}
+  .phase .meta{color:var(--muted);font-size:12.5px;}
+  .risk{
+    border:1px solid #fde68a;background:#fffbeb;
+    border-radius:10px;padding:14px 18px;margin:10px 0;
+  }
+  .risk strong{color:#92400e;}
+  ul{margin:6px 0 10px 22px;padding:0;}
+  li{margin:4px 0;}
+  .footer{color:var(--muted);font-size:12.5px;margin-top:56px;border-top:1px solid var(--line);padding-top:14px;}
+  .ascii{
+    font-family:"SF Mono","JetBrains Mono",Consolas,monospace;
+    background:#0f172a;color:#e0ecff;
+    padding:18px 22px;border-radius:12px;font-size:12.5px;
+    line-height:1.6;white-space:pre;overflow-x:auto;
+    box-shadow: inset 0 0 30px rgba(96,165,250,0.15);
+  }
+</style>
+</head>
+<body>
+
+<h1>本地語音 AI 助理</h1>
+<p class="sub">計畫書 · 建立 2026-06-08 · 對象：KC · 目標：Jarvis 級語音控制 Claude Code &amp; Cowork</p>
+
+<div class="hero">
+  <p><strong>一句話目標：</strong>做一個常駐桌面右下角的液態玻璃浮動視窗，喊「Hey Claude」就能用講的指揮 Claude Code 寫程式、叫 Cowork 處理工作、查任務進度、純粹聊天，Claude 用聲音念回給你聽。</p>
+</div>
+
+<h2>一、產品願景</h2>
+
+<p>整體體驗對標 <strong>Jarvis（鋼鐵人 AI 管家）</strong>：常駐、低存在感、隨叫隨到、語音雙向、視覺上像未來感的全息浮窗。</p>
+
+<h3>四大使用情境</h3>
+<table>
+  <thead><tr><th width="30%">情境</th><th>典型指令範例</th></tr></thead>
+  <tbody>
+    <tr><td>請 Claude 寫程式 / 改檔案</td><td>「Hey Claude，幫我把 LendOS 那個 contract 的 bug 修一下」</td></tr>
+    <tr><td>請 Claude 處理日常工作 <span class="pill">MVP 優先</span></td><td>「Hey Claude，幫我寫一則推文宣布 PerpOS 上線」</td></tr>
+    <tr><td>查看任務狀態</td><td>「Hey Claude，現在那個推文寫到哪了？」</td></tr>
+    <tr><td>純粹聊天 / 問問題</td><td>「Hey Claude，GMX 的多資產 LP 是怎麼設計的？」</td></tr>
+  </tbody>
+</table>
+
+<div class="hero" style="margin-top:14px;background:linear-gradient(135deg, rgba(96,165,250,0.10), rgba(219,234,254,0.30));">
+  <p style="font-size:13.5px;color:#1e3a8a;"><strong>架構決策歷程：</strong></p>
+  <ol style="font-size:13px;color:#1e3a8a;margin:8px 0 0 18px;">
+    <li><strong>原案：</strong>透過 Cowork 內建 MCP 把語音指令注入既有 session — 因 <code>send_message</code> 工具要求人工確認且明示不適合編排，<strong>不可行</strong>。</li>
+    <li><strong>第二案：</strong>用 Claude Agent SDK 自跑 Claude + Anthropic 直連 API — 技術可行但 KC 希望保留多模型彈性。</li>
+    <li><strong>最終案（2026-06-08）：</strong>改用 <strong>Claw Router</strong>（OpenAI 相容多模型閘道），<code>openai</code> npm 套件指向 <code>https://clawrouter.com/v1</code>，手寫 agent loop。<strong>失去</strong>Claude Agent SDK 的 MCP 自動整合，<strong>換得</strong>單一帳號管 Claude / GPT / Gemini / DeepSeek 等 112+ 模型 + 任務級的模型自動路由。</li>
+  </ol>
+</div>
+
+<h2>二、UI 設計風格</h2>
+
+<p><strong>液態玻璃（Liquid Glass）+ 藍光輔助色</strong>，視覺氛圍對標 Apple Vision Pro / iOS 17 控制中心。</p>
+
+<table>
+  <thead><tr><th>元素</th><th>設計準則</th></tr></thead>
+  <tbody>
+    <tr><td>視窗背景</td><td>半透明霧面玻璃，背後桌面內容微微透出。Windows 11 用內建 <code>acrylic</code> 材質</td></tr>
+    <tr><td>主色調</td><td>冷白 / 淺灰玻璃為底，<strong>電光藍 #60A5FA</strong>、<strong>深邃藍 #2563EB</strong> 作為強調色</td></tr>
+    <tr><td>核心元素</td><td>中央發光圓圈（待機呼吸動畫），周圍是聲波視覺化光環</td></tr>
+    <tr><td>狀態色變化</td><td>待機=冷藍呼吸 / 聽中=亮藍脈動 / 想中=紫藍漸層流動 / 說中=隨聲波跳動</td></tr>
+    <tr><td>邊框與陰影</td><td>1px 玻璃邊框 + 外圈藍光暈染（box-shadow blur 30px+）</td></tr>
+    <tr><td>文字</td><td>字級小、字距寬、灰階為主，僅關鍵字用藍色強調</td></tr>
+    <tr><td>互動細節</td><td>所有 hover / click 都有微光擴散動畫；按鈕都是膠囊狀玻璃</td></tr>
+  </tbody>
+</table>
+
+<h3>視窗示意（文字版）</h3>
+<div class="ascii">  ╭──────────────────────────────╮
+  │   ◯  Claude is listening...  │
+  │  ░░░░░▓▓▓▓▓░░░░░░ (波形)     │
+  │                              │
+  │  「幫我寫一則推文宣布…」      │
+  │                              │
+  │  狀態：Claude · 草稿產生中    │
+  ╰──────────────────────────────╯
+        ▲ 永遠在最上層 / 半透明 / 藍光邊緣發光</div>
+
+<h2>三、系統架構（白話版）</h2>
+
+<table>
+  <thead><tr><th>零件</th><th>功能</th><th>選用技術</th><th>為什麼選它</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>桌面浮動視窗</strong></td>
+      <td>UI 本體、玻璃效果、常駐最上層</td>
+      <td>Electron + Windows 11 Acrylic</td>
+      <td>網頁技術做桌面 App、原生玻璃材質支援</td>
+    </tr>
+    <tr>
+      <td><strong>喚醒詞偵測</strong></td>
+      <td>持續監聽「Hey Claude」</td>
+      <td>Picovoice Porcupine</td>
+      <td>個人使用免費、本地運算、不上傳雲端、延遲低</td>
+    </tr>
+    <tr>
+      <td><strong>語音轉文字 (STT)</strong></td>
+      <td>把你說的話變文字</td>
+      <td>本地 Whisper（whisper.cpp + medium 模型）</td>
+      <td>完全免費、離線運作、隱私佳；繁中辨識力約付費版的 90~95%</td>
+    </tr>
+    <tr>
+      <td><strong>文字轉語音 (TTS)</strong></td>
+      <td>把 Claude 回覆念出來</td>
+      <td>Edge TTS（繁中女聲 <code>HsiaoChen</code>）</td>
+      <td>免費、雲端、繁中自然度接近真人</td>
+    </tr>
+    <tr>
+      <td><strong>API 閘道</strong> <span class="pill">MVP 主軸</span></td>
+      <td>統一存取 Claude / GPT / Gemini 等模型</td>
+      <td>Claw Router（<code>https://clawrouter.com/v1</code>，OpenAI 相容）</td>
+      <td>一個帳號管多模型、單一帳單、Stripe 付款、Opus 4.6 (1M context) 等獨家模型</td>
+    </tr>
+    <tr>
+      <td><strong>SDK</strong></td>
+      <td>跟 Claw Router 對話</td>
+      <td><code>openai</code> npm + 自寫 agent loop</td>
+      <td>OpenAI SDK 支援 <code>baseURL</code> 改寫；agent loop 手動解析 tool call → 執行 → 回傳 → 迭代</td>
+    </tr>
+    <tr>
+      <td><strong>模型自動路由</strong></td>
+      <td>依任務挑最划算的模型</td>
+      <td>簡單對話→Haiku / 寫稿→Sonnet / 長文→Opus 4.6 / 看圖→GPT-4o</td>
+      <td>單一模型不可能最划算；混搭可省 50%+ 成本</td>
+    </tr>
+    <tr>
+      <td><strong>工具能力</strong></td>
+      <td>讓 AI 能讀寫檔案、跑指令、查網頁</td>
+      <td>自寫的 OpenAI function-calling 工具：檔案系統 / Bash / WebFetch</td>
+      <td>MVP 不掛 MCP，未來如需 Cowork skills 可另寫 MCP-to-OpenAI 橋接</td>
+    </tr>
+    <tr>
+      <td><strong>API 金鑰管理</strong></td>
+      <td>儲存 Claw Router API Key（<code>sk-claw-*</code>）</td>
+      <td>Electron <code>safeStorage</code> 加密儲存</td>
+      <td>跟 Windows 登入帳號綁定，不會以明碼存在硬碟；不在聊天介面輸入</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>預估費用</h3>
+<p>語音輸入輸出層免費，唯一付費項目是 Anthropic API（Claude 本身的算力）：</p>
+<ul>
+  <li>STT（本地 Whisper）：<strong>USD 0</strong></li>
+  <li>TTS（Edge TTS）：<strong>USD 0</strong></li>
+  <li>喚醒詞（Porcupine）：<strong>USD 0</strong></li>
+  <li><strong>Claw Router API：依用量付費</strong>
+    <ul>
+      <li>輕量混搭策略：閒聊用 GPT-4o-mini / Haiku、寫稿用 Sonnet、長文用 Opus 4.6</li>
+      <li>假設每天 30 分鐘語音對話，約 50 萬 tokens</li>
+      <li>純 Sonnet 約 <strong>每月 USD 100~150（NTD 3,000~4,500）</strong>（Router 通常有小幅加價）</li>
+      <li>智慧混搭路由可降到 <strong>每月 USD 40~70（NTD 1,200~2,100）</strong></li>
+      <li>實際單價請見 clawrouter.com 後台</li>
+    </ul>
+  </li>
+  <li>提供 UI 內建用量儀表板，每天即時顯示燒了多少錢，可設月額上限自動斷線</li>
+</ul>
+
+<h2>四、開發路線圖</h2>
+
+<div class="phase">
+  <h3>第一階段 — MVP「能用就好」</h3>
+  <p class="meta">預估：3~5 個全工作天 · 目標：語音閉環、能做事</p>
+  <ul>
+    <li>Electron 桌面浮動視窗（液態玻璃風格初版）</li>
+    <li><strong>先不做喚醒詞</strong>，改用按熱鍵說話（按住 <code>Ctrl+Space</code> 錄音）</li>
+    <li>語音轉文字（本地 Whisper）</li>
+    <li>把文字丟給 Claude Agent SDK 處理，給它檔案系統 + Bash 工具</li>
+    <li>Claude 回覆顯示在視窗 + Edge TTS 念出來</li>
+    <li>API Key 加密儲存 + 基本用量計數器</li>
+  </ul>
+</div>
+
+<div class="phase">
+  <h3>第二階段 — 完整版</h3>
+  <p class="meta">預估：再 1~2 週 · 目標：Jarvis 體驗到位</p>
+  <ul>
+    <li>「Hey Claude」喚醒詞（Picovoice Porcupine）</li>
+    <li>掛載你 Cowork 在用的 skill 與 MCP（baoyu-skills、marketing-god、notion 等）</li>
+    <li>Haiku / Sonnet 自動路由（簡單問題用便宜模型）</li>
+    <li>視窗即時顯示任務狀態（Claude 正在做什麼）</li>
+    <li>講「停」可以中斷正在進行的任務</li>
+    <li>液態玻璃 UI 細節打磨（動畫、聲波視覺化、狀態色）</li>
+  </ul>
+</div>
+
+<div class="phase">
+  <h3>第三階段 — 進階體驗</h3>
+  <p class="meta">預估：再 1~2 週 · 目標：日常生產力工具</p>
+  <ul>
+    <li>對話記憶（多輪對話接續上下文，含 prompt caching 省錢）</li>
+    <li>多任務並行（同時跑多個背景任務）</li>
+    <li>鍵盤快捷鍵、系統列圖示、開機自動啟動</li>
+    <li>對話歷史紀錄、可搜尋</li>
+    <li>聲音偏好設定（選不同 TTS 音色）</li>
+    <li>用量儀表板：每日 / 每月花費、月額上限自動斷線</li>
+  </ul>
+</div>
+
+<h2>五、風險與不確定</h2>
+
+<div class="risk">
+  <strong>1. Claw Router 費用會失控</strong>
+  <p>用量按 token 計費，講話沒節制可能一個月燒到 USD 200+。<br>
+  <strong>對策：</strong>UI 內建即時用量儀表板（每天、每月）；可設月額上限，超過自動暫停；模型自動路由把便宜任務丟給 Haiku / GPT-4o-mini；長對話自動截斷舊上下文。</p>
+</div>
+
+<div class="risk">
+  <strong>1b. Claw Router 作為中介的風險</strong>
+  <p>所有 prompt 與回覆都經過 Claw Router 伺服器。萬一服務中斷，整個語音助理就斷線；另需信任 Router 不留存敏感對話。<br>
+  <strong>對策：</strong>架構模組化，<code>baseURL</code> 可一鍵切回 Anthropic 直連或其他相容 router（如 OpenRouter）；敏感任務（金融、密碼）由 UI 提示「此類請改用本機處理」。</p>
+</div>
+
+<div class="risk">
+  <strong>2. 喚醒詞會持續吃資源</strong>
+  <p>Porcupine 大概吃 1-2% CPU，筆電待機久了會多耗一點電。<br>
+  <strong>對策：</strong>提供「關閉喚醒詞」開關，改用快捷鍵啟動。</p>
+</div>
+
+<div class="risk">
+  <strong>3. 繁中口語化、中英混雜</strong>
+  <p>講「幫我改 LendOS 的 contract」這種中英混雜，本地 Whisper（medium 模型）大致 OK 但偶爾會把英文 token 辨識錯。<br>
+  <strong>對策：</strong>給 Whisper 加 prompt 提示常用詞彙；視窗上顯示辨識結果讓你能口頭修正；若不滿意可一鍵切換到付費 OpenAI Whisper API。</p>
+</div>
+
+<div class="risk">
+  <strong>4. Edge TTS 非官方 API 風險</strong>
+  <p>Edge TTS 是利用 Microsoft Edge 瀏覽器的內部 API，技術上不算官方公開介面。社群已穩定使用 3 年以上，但理論上 Microsoft 可能調整或關閉。<br>
+  <strong>對策：</strong>架構模組化，TTS 可隨時切換。備案為 Windows 內建語音（Hanhan / Yating，完全離線，機械感稍重）；極端情況再升級到 OpenAI TTS。</p>
+</div>
+
+<div class="risk">
+  <strong>5. 本地 Whisper 吃資源</strong>
+  <p>每次聽寫時 CPU 會衝到 30~50% 維持幾秒鐘，筆電風扇可能會轉一下。<br>
+  <strong>對策：</strong>第一階段先用 medium 模型平衡準度與速度；若想更輕量可降到 small 模型；有 GPU 的話可改用 GPU 加速版本。</p>
+</div>
+
+<div class="risk">
+  <strong>6. 這是真的開發專案</strong>
+  <p>不是裝個套件就完成的等級，MVP 也需要幾天。<br>
+  <strong>對策：</strong>一步一步來，每個小段落都跑得起來再進下一步，不會丟一堆程式碼讓你看不懂。</p>
+</div>
+
+<h2>六、下一步</h2>
+
+<ol>
+  <li><span style="text-decoration:line-through;color:var(--muted);">階段 0：申請 Claw Router Key + 建立 Electron 骨架</span> <strong style="color:#16a34a;">✅ 完成</strong></li>
+  <li><strong>階段 1：設定頁 + API Key 加密儲存</strong>：UI 內建設定頁讓你安全貼上 <code>sk-claw-*</code>，用 Electron <code>safeStorage</code> 加密；含 Test Connection 按鈕驗證連線。</li>
+  <li><strong>階段 2：錄音層</strong>：全域熱鍵 <code>Ctrl+Space</code> 按住說話、放開送出，UI 切到 LISTENING。</li>
+  <li><strong>階段 3：本地 Whisper STT</strong>：首次啟動自動下載 medium 模型（約 1.5GB），之後永久離線辨識繁中。</li>
+  <li><strong>階段 4：Edge TTS</strong>：Claude 回覆用 HsiaoChen 繁中女聲念出來。</li>
+  <li><strong>階段 5：接 Claw Router</strong>：<code>openai</code> SDK + <code>baseURL</code>，自寫 agent loop 處理 tool use；模型自動路由（Haiku ↔ Sonnet ↔ Opus）。</li>
+  <li><strong>階段 6：串通 + 打磨</strong>：全流程連起來、Ops Center 即時更新任務步驟、用量追蹤、錯誤處理。</li>
+</ol>
+
+<p class="footer">
+此計畫由 KC 與 Claude Cowork 共同規劃 · 後續變動會直接更新本檔 · 相關產出統一放在 <code>projects/voice-assistant/</code>
+</p>
+
+</body>
+</html>

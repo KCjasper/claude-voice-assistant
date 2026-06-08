@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>Voice Assistant</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- 整個視窗 = 一張液態玻璃卡片 -->
+<div class="assistant idle" id="assistant">
+
+  <!-- 拖曳把手（可以拖整個視窗） -->
+  <div class="drag-handle"></div>
+
+  <!-- 中央 Orb 光球 + 環形光暈（點擊展開全螢幕） -->
+  <div class="orb-stage" id="orbStage" title="點擊展開 Ops Center">
+    <div class="ring r1"></div>
+    <div class="ring r2"></div>
+    <div class="ring r3"></div>
+    <div class="orb"></div>
+  </div>
+
+  <!-- 狀態文字 -->
+  <div class="status" id="statusText">IDLE</div>
+  <div class="status-detail" id="statusDetail">喊「Hey Claude」喚醒，或按住 Ctrl+Space 說話</div>
+
+  <!-- 對話氣泡（idle 時隱藏） -->
+  <div class="transcript" id="transcript">
+    <div class="speaker" id="transcriptSpeaker">你說</div>
+    <div id="transcriptBody"></div>
+  </div>
+
+  <!-- 底部控制列 -->
+  <div class="controls">
+    <div class="ctrl-left">
+      <div class="ctrl-btn" title="按住說話 / 點擊開始錄音" id="btnMic">🎙</div>
+      <div class="ctrl-btn" title="設定" id="btnSettings">⚙</div>
+    </div>
+    <div class="meter">今日 $0.00 · 月額 $50</div>
+    <div class="ctrl-btn" title="展開 Ops Center" id="btnExpand">⛶</div>
+    <div class="ctrl-btn" title="最小化" id="btnMinimize">－</div>
+    <div class="ctrl-btn" title="關閉" id="btnClose">×</div>
+  </div>
+
+  <!-- 開發測試區（之後語音串接完會拿掉） -->
+  <div class="dev-panel">
+    <div class="dev-label">DEV · STATE SWITCH</div>
+    <div class="dev-buttons">
+      <button data-state="idle" class="active">Idle</button>
+      <button data-state="listening">Listening</button>
+      <button data-state="thinking">Thinking</button>
+      <button data-state="speaking">Speaking</button>
+    </div>
+  </div>
+
+</div>
+
+<script src="src/audio/recorder.js"></script>
+<script src="renderer.js"></script>
+</body>
+</html>

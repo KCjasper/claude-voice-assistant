@@ -1,0 +1,24 @@
+{
+  "name": "voice-assistant",
+  "version": "0.1.0",
+  "description": "本地語音 AI 助理 — Jarvis-like voice control for Claude (KC's personal project)",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "keywords": [
+    "electron",
+    "voice-assistant",
+    "claude",
+    "liquid-glass"
+  ],
+  "author": "KC",
+  "license": "UNLICENSED",
+  "private": true,
+  "devDependencies": {
+    "electron": "^42.3.3"
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.17"
+  }
+}
