@@ -78,9 +78,12 @@ async function testConnection() {
   if (!key) return { ok: false, error: '尚未儲存 API Key' };
 
   const prefs = loadPrefs();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000); // 10 秒逾時
   try {
     const res = await fetch(`${prefs.baseUrl}/models`, {
       headers: { 'Authorization': `Bearer ${key}` },
+      signal: controller.signal,
     });
     if (!res.ok) {
       const txt = await res.text().catch(() => '');
@@ -90,7 +93,10 @@ async function testConnection() {
     const modelCount = data?.data?.length || 0;
     return { ok: true, modelCount };
   } catch (e) {
+    if (e.name === 'AbortError') return { ok: false, error: '連線逾時（超過 10 秒沒回應）' };
     return { ok: false, error: `連線失敗：${e.message}` };
+  } finally {
+    clearTimeout(timer);
   }
 }
 

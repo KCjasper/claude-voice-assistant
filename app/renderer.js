@@ -60,6 +60,10 @@ recorder.onError = (e) => {
   console.error('Recorder error:', e);
   setState('idle', { detail: `麥克風錯誤：${e.message}` });
 };
+// 錄音達 60 秒上限 → 自動停止並送出
+recorder.onMaxReached = () => {
+  if (recorder.isRecording()) stopRecording();
+};
 
 async function startRecording() {
   if (recorder.isRecording()) return;

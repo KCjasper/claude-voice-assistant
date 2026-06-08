@@ -172,6 +172,20 @@ function getRecordingDir() {
   return dir;
 }
 
+// 啟動時清掃孤兒暫存檔（crash 後殘留的；正常流程會在轉錄後即時刪除）
+function cleanupOldRecordings(maxAgeMs = 24 * 60 * 60 * 1000) {
+  try {
+    const dir = getRecordingDir();
+    const now = Date.now();
+    for (const f of fs.readdirSync(dir)) {
+      const fp = path.join(dir, f);
+      try {
+        if (now - fs.statSync(fp).mtimeMs > maxAgeMs) fs.unlinkSync(fp);
+      } catch {}
+    }
+  } catch {}
+}
+
 ipcMain.handle('audio:save-recording', async (event, uint8) => {
   try {
     const dir = getRecordingDir();
@@ -197,7 +211,7 @@ ipcMain.handle('stt:transcribe', async (event, wavPath, opts) => {
   const prefs = store.loadPrefs();
   const model = (opts && opts.model) || prefs.sttModel || 'medium-q5';
 
-  return await whisper.transcribe(wavPath, {
+  const result = await whisper.transcribe(wavPath, {
     model,
     language: (opts && opts.language) || 'zh',
     prompt: opts && opts.prompt,
@@ -205,32 +219,54 @@ ipcMain.handle('stt:transcribe', async (event, wavPath, opts) => {
       try { sender.send('stt:progress', p); } catch {}
     },
   });
+
+  // 用完即刪：暫存錄音 + whisper 產生的同名 .txt（避免暫存資料夾無限膨脹）
+  try {
+    if (fs.existsSync(wavPath)) fs.unlinkSync(wavPath);
+    const txt = wavPath.replace(/\.wav$/i, '.txt');
+    if (fs.existsSync(txt)) fs.unlinkSync(txt);
+  } catch {}
+
+  return result;
 });
 
 // ========== App 生命週期 ==========
-app.whenReady().then(() => {
-  createFloatingWindow();
+// 單一實例鎖：避免重複啟動開出多個浮窗
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  // 有人想再開一次 → 聚焦既有浮窗，而不是開新的
+  app.on('second-instance', () => {
+    if (!floatingWindow) return;
+    if (floatingWindow.isMinimized()) floatingWindow.restore();
+    if (!floatingWindow.isVisible()) floatingWindow.show();
+    floatingWindow.focus();
+  });
 
-  // 允許麥克風（不彈權限請求）
-  if (floatingWindow) {
+  app.whenReady().then(() => {
+    cleanupOldRecordings();
+    createFloatingWindow();
+
+    // 允許麥克風（不彈權限請求）
     floatingWindow.webContents.session.setPermissionRequestHandler((wc, perm, cb) => {
       if (perm === 'media' || perm === 'mediaKeySystem') return cb(true);
       cb(false);
     });
-  }
 
-  // 全域熱鍵：Ctrl+Shift+Space = 切換錄音（之後改成喚醒詞）
-  globalShortcut.register('Control+Shift+Space', () => {
-    if (!floatingWindow) return;
-    if (!floatingWindow.isVisible()) floatingWindow.show();
-    floatingWindow.webContents.send('hotkey:toggle-record');
+    // 全域熱鍵：Ctrl+Shift+Space = 切換錄音（之後改成喚醒詞）
+    globalShortcut.register('Control+Shift+Space', () => {
+      if (!floatingWindow) return;
+      if (!floatingWindow.isVisible()) floatingWindow.show();
+      floatingWindow.webContents.send('hotkey:toggle-record');
+    });
   });
-});
 
-app.on('will-quit', () => globalShortcut.unregisterAll());
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
-});
-app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) createFloatingWindow();
-});
+  app.on('will-quit', () => globalShortcut.unregisterAll());
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit();
+  });
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createFloatingWindow();
+  });
+}

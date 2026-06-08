@@ -13,11 +13,15 @@ class VoiceRecorder {
     this.targetSampleRate = 16000;
     this.onLevel = null;       // callback: (rms) => void，給 UI 做音波視覺
     this.onError = null;       // callback: (Error) => void
+    this.maxSeconds = 60;      // 錄音上限，避免忘記停而吃光記憶體
+    this.onMaxReached = null;  // callback: () => void，達上限時通知 UI 自動停止
+    this._maxTriggered = false;
   }
 
   async start() {
     if (this.recording) return;
     this.chunks = [];
+    this._maxTriggered = false;
 
     try {
       this.stream = await navigator.mediaDevices.getUserMedia({
@@ -62,6 +66,12 @@ class VoiceRecorder {
         for (let i = 0; i < input.length; i++) sum += input[i] * input[i];
         const rms = Math.sqrt(sum / input.length);
         this.onLevel(rms);
+      }
+
+      // 達錄音上限 → 通知 UI 自動停止（只觸發一次）
+      if (!this._maxTriggered && this.durationSeconds() >= this.maxSeconds) {
+        this._maxTriggered = true;
+        if (this.onMaxReached) this.onMaxReached();
       }
     };
 
