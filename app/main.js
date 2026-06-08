@@ -7,6 +7,7 @@ const fs = require('fs');
 const store = require('./src/config/store');
 const whisper = require('./src/stt/whisper');
 const tts = require('./src/tts/speak');
+const engine = require('./src/ai/engine');
 
 const FLOATING_W = 340, FLOATING_H = 520, EDGE = 24;
 const FULLSCREEN_PADDING = 0;
@@ -238,6 +239,20 @@ ipcMain.handle('tts:speak', async (event, text, opts) => {
     voice: (opts && opts.voice) || prefs.ttsVoice,
     rate: (opts && opts.rate) || prefs.ttsRate,
   });
+});
+
+// ========== IPC：AI 對話（Claw Router agent loop）==========
+ipcMain.handle('ai:chat', async (event, text, opts) => {
+  const sender = event.sender;
+  return await engine.chat(text, {
+    model: opts && opts.model,
+    onProgress: (p) => { try { sender.send('ai:progress', p); } catch {} },
+  });
+});
+
+ipcMain.handle('ai:reset', async () => {
+  engine.resetConversation();
+  return { ok: true };
 });
 
 // ========== App 生命週期 ==========

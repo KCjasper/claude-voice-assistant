@@ -11,7 +11,7 @@ const PREFS_FILE = () => path.join(CONFIG_DIR(), 'prefs.json');
 
 const DEFAULT_PREFS = {
   baseUrl: 'https://clawrouter.com/v1',
-  defaultModel: 'anthropic/claude-sonnet-4',
+  defaultModel: 'claude-sonnet-4-6',
   ttsVoice: 'zh-TW-HsiaoChenNeural',
   ttsRate: 1.0,
   pttHotkey: 'Control+Space',
@@ -58,7 +58,12 @@ function loadPrefs() {
   if (!fs.existsSync(PREFS_FILE())) return { ...DEFAULT_PREFS };
   try {
     const raw = fs.readFileSync(PREFS_FILE(), 'utf-8');
-    return { ...DEFAULT_PREFS, ...JSON.parse(raw) };
+    const prefs = { ...DEFAULT_PREFS, ...JSON.parse(raw) };
+    // 遷移：舊版用了不存在的 anthropic/ 前綴 model ID → 改回有效預設
+    if (typeof prefs.defaultModel === 'string' && prefs.defaultModel.startsWith('anthropic/')) {
+      prefs.defaultModel = DEFAULT_PREFS.defaultModel;
+    }
+    return prefs;
   } catch (e) {
     return { ...DEFAULT_PREFS };
   }

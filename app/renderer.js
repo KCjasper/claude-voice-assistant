@@ -114,11 +114,33 @@ async function stopRecording() {
       setState('idle', { detail: '（沒有辨識到內容，可能太短或太小聲）' });
       return;
     }
-    // 階段 4 測試：先把辨識到的話用語音念回來（階段 5 會改成念 Claude 的回覆）
-    await speak(text, { youSaid: text });
+    // 階段 5：把辨識的話交給 Claude 處理，再念出 Claude 的回覆
+    await askClaude(text);
   } else {
     setState('idle', { detail: `辨識失敗：${sttRes.error}` });
   }
+}
+
+// ===== 交給 Claude（Claw Router）處理 =====
+async function askClaude(userText) {
+  setState('thinking', {
+    detail: 'Claude 思考中⋯',
+    transcript: { speaker: 'YOU', body: userText },
+  });
+
+  const res = await window.api.chat(userText);
+
+  if (!res.ok) {
+    setState('idle', {
+      detail: `出錯了：${res.error}`,
+      transcript: { speaker: 'YOU', body: userText },
+    });
+    return;
+  }
+
+  const reply = res.text || '（Claude 沒有回覆內容）';
+  // 把 Claude 的回覆念出來（youSaid 保留你說的話顯示）
+  await speak(reply, { youSaid: userText });
 }
 
 // ===== TTS 播放 =====
@@ -202,6 +224,23 @@ window.api.onSttProgress((p) => {
     }
   } else if (p.phase === 'transcribe') {
     setState('thinking', { detail: 'Whisper 辨識中⋯' });
+  }
+});
+
+// ===== AI 進度顯示（Claude 正在用哪個工具）=====
+const TOOL_LABELS = {
+  read_file: '讀取檔案',
+  write_file: '寫入檔案',
+  list_directory: '查看資料夾',
+  fetch_url: '查網路資料',
+};
+window.api.onAiProgress((p) => {
+  if (p.phase === 'tool') {
+    const label = TOOL_LABELS[p.name] || p.name;
+    const target = p.args && (p.args.path || p.args.url) ? `：${p.args.path || p.args.url}` : '';
+    setState('thinking', { detail: `Claude 正在${label}${target}` });
+  } else if (p.phase === 'thinking') {
+    setState('thinking', { detail: 'Claude 思考中⋯' });
   }
 });
 

@@ -35,6 +35,13 @@ contextBridge.exposeInMainWorld('api', {
   // ===== 文字轉語音 =====
   speak: (text, opts) => ipcRenderer.invoke('tts:speak', text, opts || {}),
 
+  // ===== AI 對話 =====
+  chat: (text, opts) => ipcRenderer.invoke('ai:chat', text, opts || {}),
+  resetConversation: () => ipcRenderer.invoke('ai:reset'),
+  onAiProgress: (callback) => {
+    ipcRenderer.on('ai:progress', (_e, p) => callback(p));
+  },
+
   // ===== 全域熱鍵推送 =====
   onHotkeyToggleRecord: (callback) => {
     ipcRenderer.on('hotkey:toggle-record', () => callback());
