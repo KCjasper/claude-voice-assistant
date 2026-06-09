@@ -159,20 +159,7 @@ async function askClaude(userText) {
   session.turnStart = Date.now();
   session.elapsedMs = 0;
 
-  // 月額上限檢查：超過就擋下、不送 Claude（避免燒錢）
-  const prefs = await window.api.getPrefs();
-  const cap = prefs.monthlyCapUsd || 0;
-  if (cap > 0) {
-    const sum = window.UsageUtil.summary(prefs.usage);
-    if (sum.month.usd >= cap) {
-      setState('idle', {
-        detail: `已達本月上限 $${cap.toFixed(0)}（已用 $${sum.month.usd.toFixed(2)}）· 到 ⚙ 設定調整`,
-        transcript: { speaker: 'YOU', body: userText },
-      });
-      return;
-    }
-  }
-
+  // 月額上限 / 並發 / 定價未知 由後端統一把關（#6）
   setState('thinking', {
     detail: 'Claude 思考中⋯',
     transcript: { speaker: 'YOU', body: userText },
@@ -183,10 +170,10 @@ async function askClaude(userText) {
 
   if (!res.ok) {
     resetSpeakQueue();
-    setState('idle', {
-      detail: `出錯了：${res.error}`,
-      transcript: { speaker: 'YOU', body: userText },
-    });
+    if (res.usageSummary) applyUsageSummary(res.usageSummary); // 被擋時也更新用量條
+    const msg = errorMessageFor(res);
+    session.convo.pop(); // 撤回剛加的 you（沒成功送出）
+    setState('idle', { detail: msg, transcript: { speaker: 'YOU', body: userText } });
     return;
   }
 
@@ -197,8 +184,16 @@ async function askClaude(userText) {
   session.steps.forEach(s => { if (s.status === 'running') s.status = 'done'; });
   session.elapsedMs = Date.now() - session.turnStart;
 
-  // 記錄用量（成本來自 engine 回傳的 res.cost / res.usage）
-  await recordUsage(res);
+  // 用量：後端已記錄，前端只消費權威摘要（#6）
+  if (res.usageSummary) applyUsageSummary(res.usageSummary);
+  session.usage = {
+    model: res.model || '',
+    tokens: (res.usage && res.usage.total_tokens) || 0,
+    cost: res.requestCost || 0,
+    todayUsd: res.usageSummary ? res.usageSummary.today.usd : 0,
+    monthUsd: res.usageSummary ? res.usageSummary.month.usd : 0,
+  };
+  pushSession();
 
   // 等佇列把剩下的句子念完
   await waitQueueDrain();
@@ -384,45 +379,40 @@ devButtons.forEach(b => {
 // ===== 用量追蹤 =====
 const usageMeter = document.getElementById('usageMeter');
 
-async function recordUsage(res) {
-  if (!res || typeof res.cost !== 'number') return;
-  const prefs = await window.api.getPrefs();
-  const usage = window.UsageUtil.addUsage(prefs.usage, {
-    cost: res.cost,
-    promptTokens: res.usage && res.usage.prompt_tokens,
-    completionTokens: res.usage && res.usage.completion_tokens,
-  });
-  await window.api.savePrefs({ usage });
-  refreshMeter(prefs.monthlyCapUsd, usage);
-
-  // Ops Center：更新用量
-  const sum = window.UsageUtil.summary(usage);
-  session.usage = {
-    model: res.model || '',
-    tokens: (res.usage && res.usage.total_tokens) || 0,
-    cost: res.cost || 0,
-    todayUsd: sum.today.usd,
-    monthUsd: sum.month.usd,
-  };
-  pushSession();
-}
-
-async function refreshMeter(cap, usage) {
-  if (cap === undefined || usage === undefined) {
-    const prefs = await window.api.getPrefs();
-    cap = prefs.monthlyCapUsd;
-    usage = prefs.usage;
-  }
-  const sum = window.UsageUtil.summary(usage);
+// 把後端權威用量摘要渲染到浮窗用量條（#6）
+// summary 形狀：{ today:{usd,calls}, month:{usd}, capUsd, enabled, overCap }
+function applyUsageSummary(s) {
+  if (!s || !s.today || !s.month) return;
   const fmt = window.UsageUtil.fmtMoney;
-  const capStr = cap > 0 ? ` / $${Number(cap).toFixed(0)}` : '';
-  usageMeter.textContent = `今日 ${fmt(sum.today.usd)} · 本月 ${fmt(sum.month.usd)}${capStr}`;
-  usageMeter.title = `約略用量（估算）· 今日 ${sum.today.calls} 次對話`;
-  // 接近 / 超過上限變色提醒
+  const cap = s.capUsd || 0;
+  const capStr = cap > 0 ? ` / $${cap.toFixed(0)}` : '';
+  usageMeter.textContent = `今日 ${fmt(s.today.usd)} · 本月 ${fmt(s.month.usd)}${capStr}`;
+  usageMeter.title = `約略用量 · 今日 ${s.today.calls || 0} 次對話`;
   usageMeter.classList.remove('warn', 'over');
   if (cap > 0) {
-    if (sum.month.usd >= cap) usageMeter.classList.add('over');
-    else if (sum.month.usd >= cap * 0.8) usageMeter.classList.add('warn');
+    if (s.overCap || s.month.usd >= cap) usageMeter.classList.add('over');
+    else if (s.month.usd >= cap * 0.8) usageMeter.classList.add('warn');
+  }
+}
+
+// 啟動時從後端維護的 prefs.usage 重建摘要
+async function refreshMeter() {
+  const prefs = await window.api.getPrefs();
+  const sum = window.UsageUtil.summary(prefs.usage);
+  const cap = prefs.monthlyCapUsd || 0;
+  applyUsageSummary({
+    today: sum.today, month: sum.month,
+    capUsd: cap, enabled: cap > 0, overCap: cap > 0 && sum.month.usd >= cap,
+  });
+}
+
+// 被後端擋下時的訊息
+function errorMessageFor(res) {
+  switch (res.code) {
+    case 'AI_BUSY': return 'AI 正在處理上一個請求，稍等一下再說';
+    case 'MONTHLY_CAP_REACHED': return `已達本月上限 $${(res.usageSummary?.capUsd || 0).toFixed(0)} · 到 ⚙ 設定調整`;
+    case 'MODEL_PRICE_UNKNOWN': return '此模型無定價、無法控管上限，請改用已知定價的模型';
+    default: return `出錯了：${res.error || '未知錯誤'}`;
   }
 }
 
