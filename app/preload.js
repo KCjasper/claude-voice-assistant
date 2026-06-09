@@ -56,7 +56,7 @@ contextBridge.exposeInMainWorld('api', {
   onTaskState: (callback) => {
     ipcRenderer.on('task:state', (_e, state) => callback(state));
   },
-  // 全面中斷（取消後端 ai/tts + 停浮窗播放）；浮窗監聽 playback:stop
+  // 全面中斷（取消後端 ai/tts/stt + 停止 renderer 播放）
   interrupt: () => ipcRenderer.invoke('app:interrupt'),
   onPlaybackStop: (callback) => ipcRenderer.on('playback:stop', () => callback()),
 

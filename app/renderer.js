@@ -138,6 +138,8 @@ async function stopRecording() {
     }
     // 階段 5：把辨識的話交給 Claude 處理，再念出 Claude 的回覆
     await askClaude(text);
+  } else if (sttRes.code === 'CANCELLED') {
+    setState('idle', { detail: '已中斷', clearTranscript: false });
   } else {
     setState('idle', { detail: `辨識失敗：${sttRes.error}` });
   }
@@ -145,10 +147,15 @@ async function stopRecording() {
 
 // ===== 交給 Claude（Claw Router）處理 — 串流邊生成邊念 =====
 let activeUserText = '';
+let activeTurnId = null;
+let turnSequence = 0;
 
 async function askClaude(userText) {
+  const turnId = `turn-${Date.now()}-${++turnSequence}`;
+  activeTurnId = turnId;
+  lastSynthesisError = null;
   activeUserText = userText;
-  resetSpeakQueue();
+  const speechGeneration = speechQueue.reset();
 
   // Ops Center：新回合
   session.convo.push({ role: 'you', text: userText });
@@ -166,16 +173,19 @@ async function askClaude(userText) {
   });
 
   // 句子會在 onAiProgress 的 phase:'sentence' 進到 TTS 佇列邊念
-  const res = await window.api.chat(userText);
+  const res = await window.api.chat(userText, { clientTurnId: turnId });
 
   if (!res.ok) {
-    resetSpeakQueue();
+    speechQueue.reset();
     if (res.usageSummary) applyUsageSummary(res.usageSummary); // 被擋時也更新用量條
-    const msg = errorMessageFor(res);
+    const interrupted = res.code === 'CANCELLED' || activeTurnId !== turnId;
+    const msg = interrupted ? '已中斷' : errorMessageFor(res);
     session.convo.pop(); // 撤回剛加的 you（沒成功送出）
     setState('idle', { detail: msg, transcript: { speaker: 'YOU', body: userText } });
+    if (activeTurnId === turnId) activeTurnId = null;
     return;
   }
+  if (activeTurnId !== turnId) return;
 
   // Ops Center：回合完成
   session.convo.push({ role: 'claude', text: res.text || '' });
@@ -196,112 +206,90 @@ async function askClaude(userText) {
   pushSession();
 
   // 等佇列把剩下的句子念完
-  await waitQueueDrain();
+  const drained = await speechQueue.waitForDrain(speechGeneration);
+  if (!drained || activeTurnId !== turnId) return;
 
-  if (!spokeAnything) {
+  if (!speechQueue.spokeAnything) {
     // 沒有任何句子被串流出來 → 退回一次把整段念出來
     await speak(res.text || '（Claude 沒有回覆內容）', { youSaid: userText });
   } else {
     setState('idle', { detail: '✓ 完成', transcript: { speaker: 'CLAUDE', body: res.text || '' } });
   }
+  if (activeTurnId === turnId) activeTurnId = null;
 }
 
 // ===== TTS 佇列（pipelined：播當前句時先合成下一句）=====
-let currentAudio = null;
-let speakQueue = [];        // 尚未合成的句子
-let synthAhead = null;      // 預先合成中的下一句 { text, promise }
-let draining = false;
-let spokeAnything = false;
-
-function resetSpeakQueue() {
-  stopSpeaking();
-  speakQueue = [];
-  synthAhead = null;
-  draining = false;
-  spokeAnything = false;
-}
-
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-function queueBusy() { return draining || speakQueue.length > 0 || !!synthAhead; }
-
-// 輪詢等到佇列排空；多等一拍接住可能還在途中的最後一句 IPC 事件
-async function waitQueueDrain() {
-  while (queueBusy()) await sleep(80);
-  await sleep(150);
-  while (queueBusy()) await sleep(80);
-}
-
-function enqueueSentence(text) {
-  if (!text) return;
-  spokeAnything = true;
-  speakQueue.push(text);
-  if (!draining) drainQueue();
-}
+let lastSynthesisError = null;
 
 function synth(text) {
-  return window.api.speak(text).then(res => (res.ok ? res.audioBase64 : null));
-}
-
-async function drainQueue() {
-  draining = true;
-  while (speakQueue.length > 0 || synthAhead) {
-    let text, b64;
-    if (synthAhead) {
-      ({ text } = synthAhead);
-      b64 = await synthAhead.promise;
-      synthAhead = null;
-    } else {
-      text = speakQueue.shift();
-      b64 = await synth(text);
-    }
-    // 先開始合成下一句（與播放當前句平行）
-    if (speakQueue.length > 0) {
-      const next = speakQueue.shift();
-      synthAhead = { text: next, promise: synth(next) };
-    }
-    if (b64) {
-      setState('speaking', { transcript: { speaker: 'CLAUDE', body: text } });
-      await playAudioBlocking(b64);
-    }
-  }
-  draining = false;
-}
-
-function playAudioBlocking(b64) {
-  return new Promise((resolve) => {
-    const audio = new Audio('data:audio/mp3;base64,' + b64);
-    currentAudio = audio;
-    audio.onended = () => { currentAudio = null; resolve(); };
-    audio.onerror = () => { currentAudio = null; resolve(); };
-    audio.play().catch(() => { currentAudio = null; resolve(); });
+  return window.api.speak(text).then((res) => {
+    if (res.ok) return res.audioBase64;
+    lastSynthesisError = res;
+    return null;
+  }).catch((error) => {
+    lastSynthesisError = { error: error.message || 'TTS IPC failed' };
+    return null;
   });
 }
 
-function stopSpeaking() {
-  if (currentAudio) {
-    try { currentAudio.pause(); } catch {}
-    currentAudio = null;
-  }
+function createAudioPlayback(b64) {
+  const audio = new Audio('data:audio/mp3;base64,' + b64);
+  let settled = false;
+  let resolvePlayback;
+  const promise = new Promise((resolve) => { resolvePlayback = resolve; });
+  const finish = () => {
+    if (settled) return;
+    settled = true;
+    audio.onended = null;
+    audio.onerror = null;
+    resolvePlayback();
+  };
+  audio.onended = finish;
+  audio.onerror = finish;
+  audio.play().catch(finish);
+  return {
+    promise,
+    cancel() {
+      try { audio.pause(); } catch {}
+      try { audio.currentTime = 0; } catch {}
+      finish();
+    },
+  };
 }
+
+const speechQueue = new window.SpeechQueueController({
+  synthesize: synth,
+  createPlayback: createAudioPlayback,
+  onSpeaking: (text) => {
+    setState('speaking', { transcript: { speaker: 'CLAUDE', body: text } });
+  },
+});
 
 // 單段直接念（fallback / 測試用）
 async function speak(text, opts = {}) {
   if (!text) return;
-  stopSpeaking();
+  lastSynthesisError = null;
+  const generation = speechQueue.reset();
   setState('thinking', { detail: '合成語音中⋯', transcript: { speaker: 'YOU', body: opts.youSaid || text } });
-  const res = await window.api.speak(text);
-  if (!res.ok) {
-    setState('idle', { detail: `語音合成失敗：${res.error}` });
+  speechQueue.enqueue(text);
+  const drained = await speechQueue.waitForDrain(generation);
+  if (!drained) return;
+  if (lastSynthesisError) {
+    setState('idle', { detail: `語音合成失敗：${lastSynthesisError.error}` });
     return;
   }
-  setState('speaking', { transcript: { speaker: 'CLAUDE', body: text } });
-  await playAudioBlocking(res.audioBase64);
   setState('idle', { detail: '✓ 完成', transcript: { speaker: 'CLAUDE', body: text } });
 }
 
 async function toggleRecording() {
   // 正在說話 → 打斷（清空佇列）
-  if (currentAudio || draining) { resetSpeakQueue(); setState('idle', { clearTranscript: false }); return; }
+  if (speechQueue.busy()) {
+    activeTurnId = null;
+    speechQueue.reset();
+    window.api.interrupt().catch(() => {});
+    setState('idle', { clearTranscript: false });
+    return;
+  }
   if (recorder.isRecording()) await stopRecording();
   else await startRecording();
 }
@@ -314,7 +302,15 @@ window.api.onHotkeyToggleRecord(() => toggleRecording());
 
 // ===== 被中斷（Ops Center 的 Ctrl+Q）→ 停止正在播的 TTS =====
 window.api.onPlaybackStop(() => {
-  resetSpeakQueue();
+  activeTurnId = null;
+  speechQueue.reset();
+  if (recorder.isRecording()) {
+    void recorder.stop().catch(() => {});
+  }
+  session.working = null;
+  session.steps.forEach((step) => {
+    if (step.status === 'running') step.status = 'interrupted';
+  });
   setState('idle', { detail: '已中斷', clearTranscript: false });
 });
 
@@ -350,9 +346,10 @@ const TOOL_LABELS = {
   fetch_url: '查網路資料',
 };
 window.api.onAiProgress((p) => {
+  if (!activeTurnId || p.clientTurnId !== activeTurnId) return;
   if (p.phase === 'sentence') {
     session.working = null;             // 開始回答了
-    enqueueSentence(p.text);            // 串流出來的整句 → 進佇列邊念
+    speechQueue.enqueue(p.text);        // 串流出來的整句 → 進佇列邊念
   } else if (p.phase === 'tool') {
     const label = TOOL_LABELS[p.name] || p.name;
     const target = p.args && (p.args.path || p.args.url) ? `：${p.args.path || p.args.url}` : '';
@@ -361,11 +358,11 @@ window.api.onAiProgress((p) => {
     session.steps.forEach(s => { if (s.status === 'running') s.status = 'done'; });
     session.steps.push({ text: `${label}${target}`, status: 'running' });
     session.working = `Claude 正在${label}${target}`;
-    if (!draining) setState('thinking', { detail: session.working });
+    if (!speechQueue.busy()) setState('thinking', { detail: session.working });
     else pushSession();
   } else if (p.phase === 'thinking') {
     session.working = 'Claude 思考中⋯';
-    if (!draining) setState('thinking', { detail: 'Claude 思考中⋯' });
+    if (!speechQueue.busy()) setState('thinking', { detail: 'Claude 思考中⋯' });
     else pushSession();
   }
 });

@@ -12,6 +12,7 @@ const engine = require('./src/ai/engine');
 const usageLedger = require('./src/usage/ledger');
 const usagePolicy = require('./src/usage/policy');
 const cancellation = require('./src/tasks/cancellation');
+const interruption = require('./src/tasks/interrupt');
 
 const FLOATING_W = 340, FLOATING_H = 520, EDGE = 24;
 const FULLSCREEN_PADDING = 0;
@@ -78,6 +79,11 @@ function createFullscreenWindow() {
     },
   });
   fullscreenWindow.setAlwaysOnTop(true, 'screen-saver');
+  fullscreenWindow.webContents.on('before-input-event', (event, input) => {
+    if (!interruption.isInterruptInput(input)) return;
+    event.preventDefault();
+    interruptApp();
+  });
   fullscreenWindow.loadFile(path.join(__dirname, 'fullscreen.html'));
   fullscreenWindow.on('closed', () => { fullscreenWindow = null; });
 }
@@ -193,6 +199,13 @@ function cancelTasks(type, requestId) {
   return { ok: true, cancelled, count: cancelled.length };
 }
 
+function interruptApp() {
+  return interruption.interruptRuntime({
+    taskRegistry,
+    windows: BrowserWindow.getAllWindows(),
+  });
+}
+
 ipcMain.handle('task:cancel', async (event, target = {}) => {
   return cancelTasks(target.type, target.requestId);
 });
@@ -200,14 +213,9 @@ ipcMain.handle('ai:cancel', async (event, requestId) => cancelTasks('ai', reques
 ipcMain.handle('stt:cancel', async (event, requestId) => cancelTasks('stt', requestId));
 ipcMain.handle('tts:cancel', async (event, requestId) => cancelTasks('tts', requestId));
 
-// 全面中斷（給 Ops Center 的 Ctrl+Q）：取消後端 ai/tts 任務 + 通知浮窗停止正在播的 TTS
+// 全面中斷：取消後端任務，並通知所有 renderer 停止已合成或正在播放的 TTS。
 ipcMain.handle('app:interrupt', async () => {
-  cancelTasks('ai');
-  cancelTasks('tts');
-  if (floatingWindow && !floatingWindow.isDestroyed()) {
-    try { floatingWindow.webContents.send('playback:stop'); } catch {}
-  }
-  return { ok: true };
+  return interruptApp();
 });
 
 // ========== IPC：錄音檔儲存 ==========
@@ -344,6 +352,7 @@ ipcMain.handle('ai:chat', async (event, text, opts) => {
   const sender = event.sender;
   const prefs = store.loadPrefs();
   const model = (opts && opts.model) || prefs.defaultModel || 'claude-sonnet-4-6';
+  const clientTurnId = opts && opts.clientTurnId;
   const policy = usagePolicy.evaluateRequest({
     usage: prefs.usage,
     monthlyCapUsd: prefs.monthlyCapUsd,
@@ -365,7 +374,15 @@ ipcMain.handle('ai:chat', async (event, text, opts) => {
     const result = await engine.chat(text, {
       model,
       signal: task.signal,
-      onProgress: (p) => { try { sender.send('ai:progress', p); } catch {} },
+      onProgress: (p) => {
+        try {
+          sender.send('ai:progress', {
+            ...p,
+            requestId: task.id,
+            clientTurnId,
+          });
+        } catch {}
+      },
     });
 
     if (task.signal.aborted || result.cancelled) {
@@ -387,6 +404,7 @@ ipcMain.handle('ai:chat', async (event, text, opts) => {
     return {
       ...result,
       requestId: task.id,
+      clientTurnId,
       requestCost: result.cost,
       cost: undefined,
       usageRecorded: true,
