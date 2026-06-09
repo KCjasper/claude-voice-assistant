@@ -51,13 +51,22 @@
 
 ## 我的待辦（前端）
 - **#20** 工作資料夾切換 UI — 等後端 #18/#19 的 IPC 先好
-- **#23 / #24** 手機遠端的網頁客戶端 + 桌面管理 UI — 等後端 #21/#22 伺服器先好
-- （#7、#14 已完成關閉；#8 後端取消機制已完成）
+- **#24** 手機遠端的桌面管理 UI（token/QR/開關）— 等後端 #21/#22 伺服器先好
+- （#7、#14 已完成關閉；#8 後端取消機制已完成；#25 Ctrl+Q 後端已修好）
+- **#23 手機網頁客戶端 — ✅ 已完成**（見下）
 
-## ⚠️ 已知未提交 / 待確認
-- `app/fullscreen.js` 有一段**未提交**的 Ctrl+Q 中斷處理，但呼叫的是 `window.api.cancel()`——
-  **preload 沒有這個方法**（正確的是 `cancelAi(requestId)` / `cancelTask(target)` / `cancelStt` / `cancelTts`）。
-  要讓 Ctrl+Q 真的能中斷，需改成 `window.api.cancelAi()`（或 `cancelTask()`）再 commit。
+## 📱 手機遠端客戶端（#23，前端已完成 2026-06-09）
+- 程式在**獨立資料夾** `mobile-client/`（**不在 `app/` 裡**）：純靜態、零 build、可直接部署 **Vercel**（KC 指定）。
+- 檔案：`index.html`（配對+助理兩畫面）、`styles.css`（手機版液態玻璃，沿用桌面 Orb 四態）、
+  `remote.js`（連線抽象層 `RemoteClient` + **mock 模式**）、`app.js`（錄音/TTS佇列/QR/iOS音訊解鎖）、
+  `vercel.json`、`README.md`（含**假定 WS 協定**文件）。
+- **前後端解耦**：等後端 #21 定 WS 協定，只改 `remote.js`，UI 不動。協定假定見 `mobile-client/README.md`，訊息名已對齊桌面 IPC。
+- **本機預覽**：repo root 有 `.claude/launch.json`，或 `cd mobile-client && npx serve .`；按「先看看介面」走 mock 不需後端。
+- ⚠ **混合內容**：Vercel 是 https，只能連 `wss://`；區網 `ws://` 由桌面內嵌 server 開這頁才行（細節見 README）。
+
+## ⚠️ 待後端
+- #23 真實連線等後端 **#21**（內嵌 server + WS 協定 + 認證）；對外 `wss` 等 **#22**（tunnel）。
+- #25（Ctrl+Q 中斷）後端已於 `34657a5` 修好，且**動到了前端 `renderer.js`/`preload.js`/`index.html`**——前端再動這些檔前先 `git pull` 拿最新版。
 
 ## 取消機制（#8，後端已完成）
 - preload 暴露：`cancelTask(target)`、`cancelAi(requestId)`、`cancelStt(requestId)`、`cancelTts(requestId)`

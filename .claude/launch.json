@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "mobile-client",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["-y", "serve", "mobile-client", "-l", "5599"],
+      "port": 5599
+    }
+  ]
+}

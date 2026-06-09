@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0a0f1e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Voice Assistant · 遠端</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- 背景：深色 + 藍光暈 -->
+<div class="bg-glow"></div>
+
+<!-- ========== 畫面一：配對 ========== -->
+<section class="screen pairing active" id="pairingScreen">
+  <div class="glass-card pairing-card">
+    <div class="brand">
+      <div class="brand-orb"></div>
+      <div class="brand-text">
+        <h1>Voice Assistant</h1>
+        <p>手機遠端 · 連到你的桌面助理</p>
+      </div>
+    </div>
+
+    <div class="field">
+      <label for="serverInput">桌面伺服器位址</label>
+      <input id="serverInput" type="text" inputmode="url" autocapitalize="off" autocomplete="off"
+             spellcheck="false" placeholder="例如 192.168.0.12:8765">
+      <span class="hint">在桌面的「設定 → 手機遠端」看到的網址</span>
+    </div>
+
+    <div class="field">
+      <label for="tokenInput">一次性配對碼</label>
+      <input id="tokenInput" type="text" inputmode="text" autocapitalize="off" autocomplete="off"
+             spellcheck="false" placeholder="貼上桌面顯示的 token">
+    </div>
+
+    <button class="btn-primary" id="connectBtn">
+      <span class="btn-label">連線</span>
+    </button>
+
+    <div class="pairing-or"><span>或</span></div>
+
+    <button class="btn-ghost" id="scanBtn">
+      <span class="scan-icon">▣</span> 掃描 QR Code
+    </button>
+
+    <button class="btn-ghost subtle" id="demoBtn">先看看介面（離線示範）</button>
+
+    <div class="pairing-status" id="pairingStatus"></div>
+
+    <!-- QR 掃描器（隱藏，啟用時覆蓋） -->
+    <div class="scanner" id="scanner" hidden>
+      <video id="scanVideo" playsinline muted></video>
+      <div class="scanner-frame"></div>
+      <p class="scanner-hint">把桌面上的 QR Code 對準框內</p>
+      <button class="btn-ghost" id="scanCancelBtn">取消掃描</button>
+    </div>
+  </div>
+
+  <footer class="pairing-foot">
+    ⚠ 連線後，手機就能操作能讀寫檔案的桌面助理。只在你信任的網路下使用。
+  </footer>
+</section>
+
+<!-- ========== 畫面二：助理 ========== -->
+<section class="screen assistant-screen" id="assistantScreen">
+
+  <!-- 頂列：連線狀態 -->
+  <header class="topbar">
+    <div class="conn-pill" id="connPill">
+      <span class="conn-dot"></span>
+      <span class="conn-text" id="connText">連線中⋯</span>
+    </div>
+    <div class="usage-pill" id="usagePill" title="今日 / 本月用量">今日 $0.00 · 本月 $0.00</div>
+    <button class="icon-btn" id="disconnectBtn" title="斷線">⏏</button>
+  </header>
+
+  <!-- Orb 狀態球 -->
+  <div class="orb-zone idle" id="orbZone">
+    <div class="ring r1"></div>
+    <div class="ring r2"></div>
+    <div class="ring r3"></div>
+    <div class="orb"></div>
+  </div>
+  <div class="state-text" id="stateText">IDLE</div>
+  <div class="state-detail" id="stateDetail">按住下方按鈕說話</div>
+
+  <!-- 對話串 -->
+  <div class="convo" id="convo"></div>
+
+  <!-- 底部控制 -->
+  <div class="dock">
+    <button class="dock-side" id="textToggleBtn" title="改用打字">⌨</button>
+
+    <button class="mic-btn" id="micBtn" aria-label="按住說話">
+      <span class="mic-glyph">🎙</span>
+      <span class="mic-ripple"></span>
+    </button>
+
+    <button class="dock-side danger" id="interruptBtn" title="中斷" hidden>✕</button>
+    <span class="dock-side spacer" id="dockSpacer"></span>
+  </div>
+
+  <!-- 打字輸入列（預設隱藏） -->
+  <form class="text-row" id="textRow" hidden>
+    <input id="textInput" type="text" placeholder="輸入訊息⋯" autocomplete="off">
+    <button type="submit" class="text-send" id="textSendBtn">送出</button>
+  </form>
+
+</section>
+
+<!-- 解鎖 iOS 音訊用的隱藏元素 -->
+<audio id="ttsAudio" playsinline></audio>
+
+<script src="remote.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
