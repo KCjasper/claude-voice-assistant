@@ -37,6 +37,23 @@ const STATES = {
 
 let currentState = 'idle';
 
+// ===== Ops Center session 快照（推給全螢幕視窗）=====
+const session = {
+  state: 'idle',
+  detail: '',
+  convo: [],         // { role:'you'|'claude', text }
+  working: null,     // 目前工具活動文字（顯示為進行中氣泡）
+  tools: [],         // 本回合用到的工具（去重）
+  steps: [],         // 本回合工具步驟 { text, status }
+  usage: { model: '', tokens: 0, cost: 0, todayUsd: 0, monthUsd: 0 },
+  turnStart: 0,
+  elapsedMs: 0,
+};
+
+function pushSession() {
+  try { window.api.pushSession(session); } catch {}
+}
+
 function setState(name, opts = {}) {
   currentState = name;
   assistant.className = 'assistant ' + name;
@@ -52,6 +69,11 @@ function setState(name, opts = {}) {
   }
 
   devButtons.forEach(b => b.classList.toggle('active', b.dataset.state === name));
+
+  // 同步給 Ops Center
+  session.state = name;
+  session.detail = opts.detail || STATES[name].detail;
+  pushSession();
 }
 
 // ===== 錄音流程 =====
@@ -128,6 +150,15 @@ async function askClaude(userText) {
   activeUserText = userText;
   resetSpeakQueue();
 
+  // Ops Center：新回合
+  session.convo.push({ role: 'you', text: userText });
+  if (session.convo.length > 12) session.convo = session.convo.slice(-12);
+  session.tools = [];
+  session.steps = [];
+  session.working = 'Claude 思考中⋯';
+  session.turnStart = Date.now();
+  session.elapsedMs = 0;
+
   // 月額上限檢查：超過就擋下、不送 Claude（避免燒錢）
   const prefs = await window.api.getPrefs();
   const cap = prefs.monthlyCapUsd || 0;
@@ -158,6 +189,13 @@ async function askClaude(userText) {
     });
     return;
   }
+
+  // Ops Center：回合完成
+  session.convo.push({ role: 'claude', text: res.text || '' });
+  if (session.convo.length > 12) session.convo = session.convo.slice(-12);
+  session.working = null;
+  session.steps.forEach(s => { if (s.status === 'running') s.status = 'done'; });
+  session.elapsedMs = Date.now() - session.turnStart;
 
   // 記錄用量（成本來自 engine 回傳的 res.cost / res.usage）
   await recordUsage(res);
@@ -312,13 +350,22 @@ const TOOL_LABELS = {
 };
 window.api.onAiProgress((p) => {
   if (p.phase === 'sentence') {
+    session.working = null;             // 開始回答了
     enqueueSentence(p.text);            // 串流出來的整句 → 進佇列邊念
   } else if (p.phase === 'tool') {
     const label = TOOL_LABELS[p.name] || p.name;
     const target = p.args && (p.args.path || p.args.url) ? `：${p.args.path || p.args.url}` : '';
-    if (!draining) setState('thinking', { detail: `Claude 正在${label}${target}` });
+    // Ops Center：記錄工具 + 步驟
+    if (!session.tools.includes(p.name)) session.tools.push(p.name);
+    session.steps.forEach(s => { if (s.status === 'running') s.status = 'done'; });
+    session.steps.push({ text: `${label}${target}`, status: 'running' });
+    session.working = `Claude 正在${label}${target}`;
+    if (!draining) setState('thinking', { detail: session.working });
+    else pushSession();
   } else if (p.phase === 'thinking') {
+    session.working = 'Claude 思考中⋯';
     if (!draining) setState('thinking', { detail: 'Claude 思考中⋯' });
+    else pushSession();
   }
 });
 
@@ -347,6 +394,17 @@ async function recordUsage(res) {
   });
   await window.api.savePrefs({ usage });
   refreshMeter(prefs.monthlyCapUsd, usage);
+
+  // Ops Center：更新用量
+  const sum = window.UsageUtil.summary(usage);
+  session.usage = {
+    model: res.model || '',
+    tokens: (res.usage && res.usage.total_tokens) || 0,
+    cost: res.cost || 0,
+    todayUsd: sum.today.usd,
+    monthUsd: sum.month.usd,
+  };
+  pushSession();
 }
 
 async function refreshMeter(cap, usage) {

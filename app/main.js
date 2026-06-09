@@ -322,6 +322,17 @@ ipcMain.handle('ai:reset', async () => {
   return { ok: true };
 });
 
+// ========== IPC：Ops Center session 中繼 ==========
+// 浮窗推送 session 快照 → main 暫存 → 轉發給全螢幕視窗
+let lastSession = { state: 'idle', convo: [] };
+ipcMain.on('session:update', (event, snapshot) => {
+  lastSession = snapshot || lastSession;
+  if (fullscreenWindow && !fullscreenWindow.isDestroyed()) {
+    try { fullscreenWindow.webContents.send('session:state', lastSession); } catch {}
+  }
+});
+ipcMain.handle('session:get', () => lastSession);
+
 // ========== App 生命週期 ==========
 // 單一實例鎖：避免重複啟動開出多個浮窗
 const gotLock = app.requestSingleInstanceLock();

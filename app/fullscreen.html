@@ -39,24 +39,10 @@
   <div class="panel">
     <div class="panel-header">
       <span class="panel-title">CONVERSATION</span>
-      <span class="panel-meta" id="convoMeta">3 turns · 2m 14s</span>
+      <span class="panel-meta" id="convoMeta">—</span>
     </div>
     <div class="convo" id="convo">
-      <div class="msg msg-you">
-        <div class="msg-role">YOU</div>
-        <div class="msg-body">幫我寫一則推文宣布 PerpOS 上線，要有 Web3 圈內人能懂的梗</div>
-      </div>
-      <div class="msg msg-claude">
-        <div class="msg-role">CLAUDE</div>
-        <div class="msg-body">好的，我先看一下 PerpOS 的 PRD，並且找一下你之前發過的 tweet 看你的風格，然後再寫三個版本給你選</div>
-      </div>
-      <div class="msg msg-claude in-progress">
-        <div class="msg-role">CLAUDE · WORKING</div>
-        <div class="msg-body">
-          <span class="dots"><span></span><span></span><span></span></span>
-          正在撰寫第二版草稿
-        </div>
-      </div>
+      <div class="convo-empty" id="convoEmpty">尚無對話 — 按住麥克風說句話試試</div>
     </div>
   </div>
 
@@ -64,75 +50,40 @@
   <div class="panel">
     <div class="panel-header">
       <span class="panel-title">CURRENT TASK</span>
-      <span class="panel-meta">RUNNING</span>
+      <span class="panel-meta" id="taskStatus">IDLE</span>
     </div>
     <div class="task-current">
       <div class="task-label">CURRENTLY</div>
-      <div class="task-body">
-        <span class="spin">⟳</span> 撰寫推文草稿（第 2/3 版）
-      </div>
+      <div class="task-body" id="taskBody">待命中</div>
     </div>
 
-    <div class="task-steps">
-      <div class="task-step done">
-        <span class="step-mark">✓</span>
-        <span class="step-text">讀取 PerpOS PRD（perpos.html）</span>
-        <span class="step-meta">0.8s</span>
-      </div>
-      <div class="task-step done">
-        <span class="step-mark">✓</span>
-        <span class="step-text">搜尋你過去 30 則 tweet 風格</span>
-        <span class="step-meta">1.4s</span>
-      </div>
-      <div class="task-step done">
-        <span class="step-mark">✓</span>
-        <span class="step-text">撰寫草稿 v1（技術向）</span>
-        <span class="step-meta">2.1s</span>
-      </div>
-      <div class="task-step running">
-        <span class="step-mark spin">⟳</span>
-        <span class="step-text">撰寫草稿 v2（行銷向）</span>
-        <span class="step-meta">running…</span>
-      </div>
-      <div class="task-step pending">
-        <span class="step-mark">○</span>
-        <span class="step-text">撰寫草稿 v3（幽默向）</span>
-        <span class="step-meta">queued</span>
-      </div>
-      <div class="task-step pending">
-        <span class="step-mark">○</span>
-        <span class="step-text">等待你選擇</span>
-        <span class="step-meta">queued</span>
-      </div>
+    <div class="task-steps" id="taskSteps">
+      <div class="task-step pending"><span class="step-mark">○</span><span class="step-text">尚無動作</span></div>
     </div>
 
     <!-- 用到的工具 -->
     <div class="tools-row">
       <div class="tools-label">TOOLS USED</div>
-      <div class="tools-list">
-        <span class="tool-chip">📄 Read</span>
-        <span class="tool-chip">🔍 Grep</span>
-        <span class="tool-chip">🌐 WebFetch</span>
-      </div>
+      <div class="tools-list" id="toolsList"><span class="tool-chip dim">—</span></div>
     </div>
 
     <!-- 用量 -->
     <div class="usage-row">
       <div class="usage-item">
         <div class="usage-label">MODEL</div>
-        <div class="usage-value">Sonnet 4.5</div>
+        <div class="usage-value" id="uModel">—</div>
       </div>
       <div class="usage-item">
         <div class="usage-label">TOKENS</div>
-        <div class="usage-value">1,234</div>
+        <div class="usage-value" id="uTokens">—</div>
       </div>
       <div class="usage-item">
-        <div class="usage-label">COST</div>
-        <div class="usage-value">$0.04</div>
+        <div class="usage-label">本月 COST</div>
+        <div class="usage-value" id="uCost">$0.00</div>
       </div>
       <div class="usage-item">
         <div class="usage-label">ELAPSED</div>
-        <div class="usage-value">12.4s</div>
+        <div class="usage-value" id="uElapsed">—</div>
       </div>
     </div>
   </div>

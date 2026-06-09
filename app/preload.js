@@ -48,6 +48,11 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('ai:progress', (_e, p) => callback(p));
   },
 
+  // ===== Ops Center session 同步 =====
+  pushSession: (snapshot) => ipcRenderer.send('session:update', snapshot),
+  getSession: () => ipcRenderer.invoke('session:get'),
+  onSessionState: (callback) => ipcRenderer.on('session:state', (_e, s) => callback(s)),
+
   // ===== 全域熱鍵推送 =====
   onHotkeyToggleRecord: (callback) => {
     ipcRenderer.on('hotkey:toggle-record', () => callback());
