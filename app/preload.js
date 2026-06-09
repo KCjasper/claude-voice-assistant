@@ -20,8 +20,15 @@ contextBridge.exposeInMainWorld('api', {
   // ===== Workspace folders =====
   getWorkspace: () => ipcRenderer.invoke('workspace:get'),
   chooseWorkspace: () => ipcRenderer.invoke('workspace:choose'),
+  pickWorkspace: () => ipcRenderer.invoke('workspace:pick'),
   setActiveWorkspace: (folderPath) => ipcRenderer.invoke('workspace:set', folderPath),
+  setWorkspace: (folderPath) => ipcRenderer.invoke('workspace:set', folderPath),
   removeWorkspace: (folderPath) => ipcRenderer.invoke('workspace:remove', folderPath),
+  onWorkspaceChanged: (callback) => {
+    const listener = (_event, state) => callback(state);
+    ipcRenderer.on('workspace:changed', listener);
+    return () => ipcRenderer.removeListener('workspace:changed', listener);
+  },
 
   // ===== API Key（加密）=====
   saveApiKey: (key) => ipcRenderer.invoke('config:save-api-key', key),
