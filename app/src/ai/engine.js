@@ -27,7 +27,7 @@ function systemPrompt() {
     '【檔案慣例】',
     '- 文件類產出一律用 HTML 格式（.html），這是 KC 的偏好。',
     '- 跟某個專案相關的檔案放 projects/專案名稱/ 底下；一次性的產出放 outputs/。',
-    '- 覆蓋既有檔案前要謹慎；不確定就先問。',
+    '- write_file 回傳 WRITE_CONFLICT 時，必須先告知 KC 並詢問是否覆寫；只有 KC 明確確認該檔案後，才能用 overwrite=true 重試。',
   ].join('\n');
 }
 
@@ -44,7 +44,7 @@ function jarvisPrompt() {
     '- If you produce longer content (a tweet, an article, a report), write the full content to a file with write_file, and only SPEAK a one-line summary, e.g. "I have drafted three versions and saved them to the outputs folder, sir. Shall I read one to you?"',
     '- If you need more information, ask in one concise sentence.',
     '',
-    'File conventions: documents as .html (KC prefers HTML); project files under projects/<name>/; one-off outputs under outputs/. Be careful before overwriting existing files.',
+    'File conventions: documents as .html (KC prefers HTML); project files under projects/<name>/; one-off outputs under outputs/. If write_file returns WRITE_CONFLICT, ask KC before retrying with overwrite=true. Never decide to overwrite on your own.',
   ].join('\n');
 }
 

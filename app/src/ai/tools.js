@@ -7,6 +7,7 @@ const store = require('../config/store');
 const search = require('./search');
 const cancellation = require('../tasks/cancellation');
 const urlFetch = require('./url-fetch');
+const fileWrite = require('./file-write');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..', '..');
 
@@ -61,12 +62,16 @@ const schema = [
     type: 'function',
     function: {
       name: 'write_file',
-      description: '在工作資料夾內寫入/覆蓋一個檔案。產出文件（文章、報告）一律用 .html。會自動建立需要的資料夾。',
+      description: '在工作資料夾內安全建立檔案。既有檔案不會直接覆蓋；只有使用者明確要求替換時，才可帶 overwrite=true 重試。產出文件（文章、報告）一律用 .html。',
       parameters: {
         type: 'object',
         properties: {
           path: { type: 'string', description: '相對於工作資料夾的檔案路徑，例如 outputs/tweet-2026-06-08.html' },
           content: { type: 'string', description: '完整檔案內容' },
+          overwrite: {
+            type: 'boolean',
+            description: '既有檔案的明確覆寫確認。只有使用者要求替換時才設為 true；新檔不需要。',
+          },
         },
         required: ['path', 'content'],
       },
@@ -126,13 +131,6 @@ function readFile(args) {
   return fs.readFileSync(fp, 'utf-8');
 }
 
-function writeFile(args) {
-  const fp = safeResolve(args.path);
-  fs.mkdirSync(path.dirname(fp), { recursive: true });
-  fs.writeFileSync(fp, args.content ?? '', 'utf-8');
-  return `已寫入：${args.path}（${Buffer.byteLength(args.content ?? '', 'utf-8')} bytes）`;
-}
-
 function listDirectory(args) {
   const dp = safeResolve(args.path || '.');
   if (!fs.existsSync(dp)) return `錯誤：找不到目錄 ${args.path}`;
@@ -147,7 +145,7 @@ async function execute(name, args, opts = {}) {
     cancellation.throwIfAborted(opts.signal);
     switch (name) {
       case 'read_file': return readFile(args);
-      case 'write_file': return writeFile(args);
+      case 'write_file': return fileWrite.writeFile(workspaceRoot(), args);
       case 'list_directory': return listDirectory(args);
       case 'fetch_url': return await urlFetch.fetchUrl(args.url, opts);
       case 'web_search': return await search.webSearch(args.query, args.count || 5, opts);
