@@ -9,6 +9,8 @@ const whisper = require('./src/stt/whisper');
 const tts = require('./src/tts/speak');
 const eleven = require('./src/tts/elevenlabs');
 const engine = require('./src/ai/engine');
+const usageLedger = require('./src/usage/ledger');
+const usagePolicy = require('./src/usage/policy');
 
 const FLOATING_W = 340, FLOATING_H = 520, EDGE = 24;
 const FULLSCREEN_PADDING = 0;
@@ -17,6 +19,7 @@ const SETTINGS_W = 520, SETTINGS_H = 720;
 let floatingWindow = null;
 let fullscreenWindow = null;
 let settingsWindow = null;
+let aiChatInFlight = false;
 
 // ========== 浮動視窗 ==========
 function createFloatingWindow() {
@@ -263,11 +266,55 @@ ipcMain.handle('tts:list-eleven-voices', async () => await eleven.listVoices());
 
 // ========== IPC：AI 對話（Claw Router agent loop）==========
 ipcMain.handle('ai:chat', async (event, text, opts) => {
+  if (aiChatInFlight) {
+    return { ok: false, code: 'AI_BUSY', error: 'AI is already processing another request.' };
+  }
+
   const sender = event.sender;
-  return await engine.chat(text, {
-    model: opts && opts.model,
-    onProgress: (p) => { try { sender.send('ai:progress', p); } catch {} },
+  const prefs = store.loadPrefs();
+  const model = (opts && opts.model) || prefs.defaultModel || 'claude-sonnet-4-6';
+  const policy = usagePolicy.evaluateRequest({
+    usage: prefs.usage,
+    monthlyCapUsd: prefs.monthlyCapUsd,
+    model,
   });
+
+  if (!policy.allowed) {
+    return {
+      ok: false,
+      code: policy.code,
+      error: policy.error,
+      usageSummary: policy.usageSummary,
+    };
+  }
+
+  aiChatInFlight = true;
+  try {
+    const result = await engine.chat(text, {
+      model,
+      onProgress: (p) => { try { sender.send('ai:progress', p); } catch {} },
+    });
+
+    if (!result.ok) return result;
+
+    const latestPrefs = store.loadPrefs();
+    const usage = usageLedger.recordUsage(latestPrefs.usage, {
+      cost: result.cost,
+      promptTokens: result.usage?.prompt_tokens,
+      completionTokens: result.usage?.completion_tokens,
+    });
+    store.saveUsage(usage);
+
+    return {
+      ...result,
+      requestCost: result.cost,
+      cost: undefined,
+      usageRecorded: true,
+      usageSummary: usageLedger.capStatus(usage, latestPrefs.monthlyCapUsd),
+    };
+  } finally {
+    aiChatInFlight = false;
+  }
 });
 
 ipcMain.handle('ai:reset', async () => {

@@ -4,21 +4,10 @@
 const OpenAI = require('openai');
 const store = require('../config/store');
 const tools = require('./tools');
+const pricing = require('./pricing');
 
 const MAX_ITERATIONS = 8;
 const MAX_HISTORY = 20; // 保留最近幾則對話（控制 token 成本）
-
-// 粗略價格表（USD / 百萬 token）：input, output。僅供估算，實際以 Claw Router 帳單為準。
-// 找不到的 model 就只回報 token 數、不算錢。
-const PRICE = {
-  'claude-sonnet-4-6':            { in: 3,  out: 15 },
-  'claude-sonnet-4-5-20250929':   { in: 3,  out: 15 },
-  'claude-sonnet-4-20250514':     { in: 3,  out: 15 },
-  'claude-opus-4-8':              { in: 15, out: 75 },
-  'claude-opus-4-7':              { in: 15, out: 75 },
-  'claude-opus-4-6':              { in: 15, out: 75 },
-  'gemini-2.5-flash':             { in: 0.3, out: 2.5 },
-};
 
 function systemPrompt() {
   const prefs = store.loadPrefs();
@@ -74,12 +63,6 @@ function addUsage(acc, usage) {
   acc.prompt_tokens += usage.prompt_tokens || 0;
   acc.completion_tokens += usage.completion_tokens || 0;
   acc.total_tokens += usage.total_tokens || 0;
-}
-
-function computeCost(model, usage) {
-  const p = PRICE[model];
-  if (!p) return null;
-  return (usage.prompt_tokens / 1e6) * p.in + (usage.completion_tokens / 1e6) * p.out;
 }
 
 // 粗略估算 token：中日韓字 ~1 token/字，其餘 ~1 token/4 字
@@ -221,7 +204,7 @@ async function chat(userText, opts = {}) {
       if (history.length > MAX_HISTORY) history = history.slice(-MAX_HISTORY);
       const replyText = (content || fullText).trim();
       reconcileUsage(usage, messages, replyText);
-      return { ok: true, text: replyText, usage, cost: computeCost(model, usage), model };
+      return { ok: true, text: replyText, usage, cost: pricing.computeCost(model, usage), model };
     }
 
     return { ok: false, error: `工具呼叫超過上限（${MAX_ITERATIONS} 次），可能卡住了`, usage };

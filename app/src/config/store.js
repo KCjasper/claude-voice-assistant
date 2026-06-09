@@ -16,6 +16,7 @@ const DEFAULT_PREFS = {
   ttsRate: 1.0,
   pttHotkey: 'Control+Space',
   monthlyCapUsd: 50,
+  usage: { days: {}, months: {} },
   modelRouting: true,
   searchProvider: 'tavily',    // 'tavily' | 'brave' | 'google'
   googleCx: '',                // Google Custom Search 引擎 ID（用 google 時才需要）
@@ -95,10 +96,31 @@ function loadPrefs() {
   }
 }
 
+function writePrefs(next) {
+  const file = PREFS_FILE();
+  const temp = `${file}.tmp-${process.pid}-${Date.now()}`;
+  fs.writeFileSync(temp, JSON.stringify(next, null, 2), 'utf-8');
+  try {
+    fs.renameSync(temp, file);
+  } catch (error) {
+    try { fs.unlinkSync(temp); } catch {}
+    throw error;
+  }
+}
+
 function savePrefs(partial) {
   const cur = loadPrefs();
-  const next = { ...cur, ...partial };
-  fs.writeFileSync(PREFS_FILE(), JSON.stringify(next, null, 2), 'utf-8');
+  const editable = { ...(partial || {}) };
+  delete editable.usage;
+  const next = { ...cur, ...editable };
+  writePrefs(next);
+  return next;
+}
+
+function saveUsage(usage) {
+  const cur = loadPrefs();
+  const next = { ...cur, usage };
+  writePrefs(next);
   return next;
 }
 
@@ -138,6 +160,7 @@ module.exports = {
   clearApiKey,
   loadPrefs,
   savePrefs,
+  saveUsage,
   testConnection,
   saveSecret,
   loadSecret,
