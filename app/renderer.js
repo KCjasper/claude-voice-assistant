@@ -280,32 +280,27 @@ btnMic.addEventListener('click', toggleRecording);
 window.api.onHotkeyToggleRecord(() => toggleRecording());
 
 // ===== Whisper 進度顯示 =====
+// 後端事件有兩類：生命週期用 `phase`、下載/解壓進度用 `stage`+`step`
+function mb(n) { return (n / 1048576).toFixed(0); }
+function pctStr(p) { return p.total ? ` ${mb(p.downloaded)}/${mb(p.total)}MB (${((p.downloaded / p.total) * 100).toFixed(0)}%)` : ''; }
+
 window.api.onSttProgress((p) => {
-  if (p.phase === 'ensure-binary') {
-    if (p.step === 'fetch-url')   setState('thinking', { detail: '檢查 Whisper 程式中⋯' });
-    if (p.step === 'download') {
-      if (p.total) {
-        const mb = (p.downloaded / 1048576).toFixed(1);
-        const totalMb = (p.total / 1048576).toFixed(1);
-        const pct = ((p.downloaded / p.total) * 100).toFixed(0);
-        setState('thinking', { detail: `下載 Whisper 程式 ${mb}/${totalMb} MB (${pct}%)` });
-      } else {
-        setState('thinking', { detail: '下載 Whisper 程式中⋯' });
-      }
-    }
-    if (p.step === 'extract')     setState('thinking', { detail: '解壓 Whisper 程式中⋯' });
-  } else if (p.phase === 'ensure-model') {
-    setState('thinking', { detail: `準備模型 ${p.model}⋯` });
-  } else if (p.stage === 'model' && p.step === 'download') {
-    if (p.total) {
-      const mb = (p.downloaded / 1048576).toFixed(1);
-      const totalMb = (p.total / 1048576).toFixed(1);
-      const pct = ((p.downloaded / p.total) * 100).toFixed(0);
-      setState('thinking', { detail: `下載模型 ${p.name} ${mb}/${totalMb} MB (${pct}%)` });
-    }
-  } else if (p.phase === 'transcribe') {
-    setState('thinking', { detail: 'Whisper 辨識中⋯' });
+  // 進度事件（stage + step）— 優先處理，因為下載細節在這
+  if (p.stage === 'binary') {
+    if (p.step === 'fetch-url') setState('thinking', { detail: '查詢 Whisper 版本⋯' });
+    else if (p.step === 'download') setState('thinking', { detail: `下載 Whisper 程式${pctStr(p)}` });
+    else if (p.step === 'extract') setState('thinking', { detail: '解壓 Whisper 程式⋯' });
+    return;
   }
+  if (p.stage === 'model' && p.step === 'download') {
+    setState('thinking', { detail: `下載模型${pctStr(p)}` });
+    return;
+  }
+  // 生命週期事件（phase）
+  if (p.phase === 'ensure-binary') setState('thinking', { detail: p.gpu ? '準備 GPU 版 Whisper⋯' : '準備 Whisper⋯' });
+  else if (p.phase === 'gpu-fallback') setState('thinking', { detail: 'GPU 版不可用，改用 CPU⋯' });
+  else if (p.phase === 'ensure-model') setState('thinking', { detail: `準備模型 ${p.model || ''}⋯` });
+  else if (p.phase === 'transcribe') setState('thinking', { detail: 'Whisper 辨識中⋯' });
 });
 
 // ===== AI 進度顯示（Claude 正在用哪個工具）=====
