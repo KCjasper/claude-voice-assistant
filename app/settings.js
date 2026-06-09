@@ -398,5 +398,187 @@ function showResult(kind, msg) {
   els.testResult.textContent = msg;
 }
 
+// ============================================================
+// WORKSPACE · 工作資料夾 (#20)
+// 後端契約（#18 已接上 preload）：所有方法回傳 { ok, state } 或 { ok:false, error, code }
+//   getWorkspace()                -> { ok, state }
+//   chooseWorkspace()             -> { ok, canceled?, state }      // 開原生對話框
+//   setActiveWorkspace(folderPath)-> { ok, state }
+//   removeWorkspace(folderPath)   -> { ok, state }
+//   其中 state = { workspaceDir:作用中絕對路徑, isDefault:是否為預設專案夾, approvedFolders:[{path,name}] }
+//   危險路徑（磁碟根/系統夾/家目錄頂層/路徑逃逸）由後端 throw -> { ok:false, error, code }
+// 後端方法不存在時自動走 mock（瀏覽器預覽 / 降級用）。
+// 註：#19 規劃的 workspace:changed 廣播尚未實作，onWorkspaceChanged 之後有再自動接上。
+// ============================================================
+const wsEls = {
+  active: $('wsActivePath'),
+  list: $('wsList'),
+  pick: $('btnPickWorkspace'),
+  note: $('wsNote'),
+};
+
+const wsApiReady = !!(window.api && typeof window.api.getWorkspace === 'function');
+
+// 後端未接時的示範狀態
+let wsMock = {
+  active: 'D:\\Claude-workspace\\projects\\voice-assistant',
+  folders: [
+    { path: 'D:\\Claude-workspace\\projects\\voice-assistant', name: 'voice-assistant' },
+    { path: 'D:\\Claude-workspace', name: 'Claude-workspace（整個工作區）' },
+  ],
+};
+
+function wsBasename(p) {
+  if (!p) return '';
+  const parts = String(p).split(/[\\/]/).filter(Boolean);
+  return parts[parts.length - 1] || p;
+}
+
+function wsSetNote(kind, msg) {
+  if (!msg) { wsEls.note.className = 'test-result'; wsEls.note.textContent = ''; return; }
+  wsEls.note.className = `test-result show ${kind || 'ok'}`;
+  wsEls.note.textContent = msg;
+}
+
+// 真實 IPC 的 { ok, state } -> 前端用的扁平 { active, folders, isDefault }
+function wsUnwrap(res) {
+  const s = (res && res.state) || {};
+  return { active: s.workspaceDir || '', folders: s.approvedFolders || [], isDefault: !!s.isDefault };
+}
+
+async function wsGet() {
+  if (wsApiReady) {
+    const res = await window.api.getWorkspace();
+    if (!res || !res.ok) throw new Error((res && res.error) || '讀取工作資料夾失敗');
+    return wsUnwrap(res);
+  }
+  return { active: wsMock.active, folders: wsMock.folders.slice(), isDefault: false, mock: true };
+}
+
+function renderWorkspace(state) {
+  const active = (state && state.active) || '';
+  const folders = (state && state.folders) || [];
+
+  wsEls.active.textContent = (active || '（尚未設定）') + (state && state.isDefault ? '　· 預設專案資料夾' : '');
+  wsEls.active.title = active || '';
+
+  wsEls.list.innerHTML = '';
+  if (!folders.length) {
+    const empty = document.createElement('div');
+    empty.className = 'ws-empty';
+    empty.textContent = '還沒有授權任何資料夾，按下方「選擇資料夾」新增。';
+    wsEls.list.appendChild(empty);
+    return;
+  }
+
+  folders.forEach((f) => {
+    const isActive = f.path === active;
+    const item = document.createElement('div');
+    item.className = 'ws-item' + (isActive ? ' active' : '');
+
+    const main = document.createElement('button');
+    main.className = 'ws-item-main';
+    main.type = 'button';
+    const nameEl = document.createElement('div');
+    nameEl.className = 'ws-item-name';
+    nameEl.textContent = f.name || wsBasename(f.path);
+    const pathEl = document.createElement('div');
+    pathEl.className = 'ws-item-path';
+    pathEl.textContent = f.path;
+    main.appendChild(nameEl);
+    main.appendChild(pathEl);
+    main.title = isActive ? '目前作用中' : `切換到這個資料夾`;
+    main.addEventListener('click', () => { if (!isActive) wsSwitch(f.path); });
+    item.appendChild(main);
+
+    if (isActive) {
+      const badge = document.createElement('span');
+      badge.className = 'ws-badge';
+      badge.textContent = '作用中';
+      item.appendChild(badge);
+    }
+
+    const rm = document.createElement('button');
+    rm.className = 'ws-remove';
+    rm.type = 'button';
+    rm.textContent = '×';
+    rm.title = '從授權清單移除';
+    rm.addEventListener('click', (e) => { e.stopPropagation(); wsRemove(f.path, f.name); });
+    item.appendChild(rm);
+
+    wsEls.list.appendChild(item);
+  });
+}
+
+async function wsSwitch(path) {
+  if (!wsApiReady) {
+    wsMock.active = path;
+    renderWorkspace(await wsGet());
+    wsSetNote('ok', `（示範）已切換到 ${path}`);
+    return;
+  }
+  const res = await window.api.setActiveWorkspace(path);
+  if (!res || !res.ok) { wsSetNote('err', (res && res.error) || '切換失敗'); return; }
+  renderWorkspace(wsUnwrap(res));
+  wsSetNote('ok', `✓ 已切換 · AI 現在只在這個資料夾內讀寫`);
+}
+
+async function wsRemove(path, name) {
+  if (!confirm(`從授權清單移除這個資料夾？\n\n${name || ''}\n${path}\n\n移除後 AI 將無法再讀寫它（資料夾本身不會被刪除）。`)) return;
+  if (!wsApiReady) {
+    wsMock.folders = wsMock.folders.filter((f) => f.path !== path);
+    if (wsMock.active === path) wsMock.active = (wsMock.folders[0] && wsMock.folders[0].path) || '';
+    renderWorkspace(await wsGet());
+    wsSetNote('ok', '（示範）已從清單移除');
+    return;
+  }
+  const res = await window.api.removeWorkspace(path);
+  if (!res || !res.ok) { wsSetNote('err', (res && res.error) || '移除失敗'); return; }
+  renderWorkspace(wsUnwrap(res));
+  wsSetNote('ok', '已從授權清單移除');
+}
+
+wsEls.pick.addEventListener('click', async () => {
+  if (!wsApiReady) {
+    const n = wsMock.folders.length + 1;
+    const p = `D:\\示範資料夾_${n}`;
+    wsMock.folders.push({ path: p, name: `示範資料夾_${n}` });
+    wsMock.active = p;
+    renderWorkspace(await wsGet());
+    wsSetNote('warn', `（示範）已新增並切換到 ${p}。實際會跳出原生「選擇資料夾」對話框。`);
+    return;
+  }
+  wsEls.pick.disabled = true;
+  wsEls.pick.textContent = '⟳ 開啟對話框…';
+  try {
+    const res = await window.api.chooseWorkspace();
+    if (res && res.canceled) return;
+    if (!res || !res.ok) { wsSetNote('err', (res && res.error) || '選擇失敗'); return; }
+    const st = wsUnwrap(res);
+    renderWorkspace(st);
+    wsSetNote('ok', `✓ 已加入並切換到 ${st.active}`);
+  } finally {
+    wsEls.pick.disabled = false;
+    wsEls.pick.textContent = '＋ 選擇資料夾…';
+  }
+});
+
+// 後端切換後廣播 → 即時更新（多視窗一致）
+if (wsApiReady && typeof window.api.onWorkspaceChanged === 'function') {
+  window.api.onWorkspaceChanged((state) => renderWorkspace(state));
+}
+
+async function initWorkspace() {
+  try {
+    renderWorkspace(await wsGet());
+    if (!wsApiReady) {
+      wsSetNote('warn', '後端 IPC 尚未接上（等 #18 / #19），以下為介面示範。接好後即為真實切換。');
+    }
+  } catch (e) {
+    wsSetNote('err', `工作資料夾載入失敗：${e.message}`);
+  }
+}
+
 // 初始化
 loadAll();
+initWorkspace();

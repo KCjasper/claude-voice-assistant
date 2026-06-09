@@ -78,6 +78,28 @@
       </div>
     </div>
 
+    <!-- 區段：工作資料夾 (#20) -->
+    <div class="section">
+      <div class="section-title">WORKSPACE · 工作資料夾</div>
+
+      <div class="field">
+        <label>目前作用中</label>
+        <div class="ws-active" id="wsActivePath" title="">載入中⋯</div>
+        <div class="hint">AI 的檔案讀寫只會發生在這個資料夾內（含子資料夾），無法用 ../ 逃到外面。</div>
+      </div>
+
+      <div class="field">
+        <label>已授權的資料夾 <span class="hint">點一下即切換</span></label>
+        <div class="ws-list" id="wsList"></div>
+      </div>
+
+      <div class="actions-row">
+        <button class="btn-primary" id="btnPickWorkspace">＋ 選擇資料夾…</button>
+      </div>
+
+      <div class="test-result" id="wsNote"></div>
+    </div>
+
     <!-- 區段 3：語音 -->
     <div class="section">
       <div class="section-title">VOICE</div>

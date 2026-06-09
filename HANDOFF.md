@@ -50,10 +50,20 @@
 - **金鑰**：全部走 `store.saveSecret`/`safeStorage` 加密，設定頁輸入，**絕不**經過聊天。
 
 ## 我的待辦（前端）
-- **#20** 工作資料夾切換 UI — 等後端 #18/#19 的 IPC 先好
 - **#24** 手機遠端的桌面管理 UI（token/QR/開關）— 等後端 #21/#22 伺服器先好
 - （#7、#14 已完成關閉；#8 後端取消機制已完成；#25 Ctrl+Q 後端已修好）
 - **#23 手機網頁客戶端 — ✅ 已完成**（見下）
+- **#20 工作資料夾切換 UI — ✅ 完成**（已接後端 #18 真實 IPC，可端到端運作）
+
+## 🗂 工作資料夾切換 UI（#20，完成 2026-06-09）
+- 位置：設定頁 `settings.html` 的 **WORKSPACE** 區段（在 MODEL 與 VOICE 之間）+ `settings.js` 的 workspace 區塊 + `settings.css` 的 `.ws-*` 樣式。
+- 功能：顯示目前作用中路徑（含「預設專案資料夾」標示）、列出已授權資料夾（點一下切換、× 移除）、「選擇資料夾…」鈕、安全提示文字。
+- **後端 #18 已交付 IPC**（preload `f781bfb`），前端已對齊**真實契約**（全部回 `{ ok, state }`）：
+  - `getWorkspace()` / `chooseWorkspace()`（開原生對話框，取消回 `{canceled:true}`）/ `setActiveWorkspace(path)` / `removeWorkspace(path)`
+  - `state = { workspaceDir, isDefault, approvedFolders:[{path,name}] }`；危險路徑後端 throw → `{ok:false,error,code}`
+  - ⚠️ 方法名跟我原本假定的不同（`pick→choose`、`set→setActiveWorkspace`），已修正。`settings.js` 有 `wsUnwrap()` 把 `{ok,state}` 攤平成 `{active,folders,isDefault}`。
+  - #19 規劃的 `workspace:changed` 廣播尚未做；`onWorkspaceChanged` 之後出現會自動接上（已留 guard）。
+- **優雅降級 + mock**：`window.api.getWorkspace` 不存在時（如純瀏覽器預覽）自動走 mock 示範。
 
 ## 📱 手機遠端客戶端（#23，前端已完成 2026-06-09）
 - 程式在**獨立資料夾** `mobile-client/`（**不在 `app/` 裡**）：純靜態、零 build、可直接部署 **Vercel**（KC 指定）。

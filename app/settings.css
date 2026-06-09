@@ -247,6 +247,78 @@ html,body{
   color:#fca5a5;
 }
 
+/* ===== 工作資料夾 (#20) ===== */
+.ws-active{
+  display:block;
+  font-family:"SF Mono","JetBrains Mono",Consolas,monospace;
+  font-size:12px;color:#93c5fd;
+  padding:9px 12px;
+  background:rgba(96,165,250,0.08);
+  border:1px solid rgba(96,165,250,0.25);
+  border-radius:8px;
+  word-break:break-all;line-height:1.5;
+}
+.ws-list{
+  display:flex;flex-direction:column;gap:6px;
+}
+.ws-item{
+  display:flex;align-items:center;gap:8px;
+  padding:8px 10px;
+  background:rgba(255,255,255,0.04);
+  border:1px solid rgba(255,255,255,0.10);
+  border-radius:10px;
+  transition:all 0.2s;
+}
+.ws-item.active{
+  background:rgba(96,165,250,0.12);
+  border-color:rgba(96,165,250,0.4);
+}
+.ws-item-main{
+  flex:1;min-width:0;text-align:left;
+  background:none;border:none;cursor:pointer;
+  font-family:inherit;padding:0;
+  -webkit-app-region:no-drag;
+}
+.ws-item:not(.active) .ws-item-main:hover .ws-item-name{color:#bfdbfe;}
+.ws-item-name{
+  font-size:12.5px;color:rgba(255,255,255,0.9);font-weight:500;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.ws-item-path{
+  font-size:10px;color:rgba(255,255,255,0.45);
+  font-family:"SF Mono",Consolas,monospace;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  margin-top:2px;
+}
+.ws-badge{
+  flex:none;font-size:9px;letter-spacing:0.1em;font-weight:600;
+  color:#86efac;
+  padding:2px 8px;border-radius:999px;
+  background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.3);
+}
+.ws-remove{
+  flex:none;width:24px;height:24px;border-radius:50%;
+  background:rgba(255,255,255,0.05);
+  border:1px solid rgba(255,255,255,0.12);
+  color:rgba(255,255,255,0.6);
+  font-size:13px;cursor:pointer;line-height:1;
+  -webkit-app-region:no-drag;
+  transition:all 0.2s;
+}
+.ws-remove:hover{
+  background:rgba(239,68,68,0.25);color:#fff;border-color:rgba(239,68,68,0.5);
+}
+.ws-empty{
+  font-size:11.5px;color:rgba(255,255,255,0.45);
+  padding:10px 12px;text-align:center;
+  border:1px dashed rgba(255,255,255,0.12);border-radius:10px;
+}
+.test-result.warn{
+  background:rgba(251,191,36,0.10);
+  border:1px solid rgba(251,191,36,0.30);
+  color:#fcd34d;
+}
+
 /* ===== 用量小卡 ===== */
 .field-static{
   display:grid;grid-template-columns:1fr 1fr;gap:10px;
