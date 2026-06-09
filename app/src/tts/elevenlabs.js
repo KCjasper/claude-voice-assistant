@@ -69,12 +69,14 @@ async function listVoices() {
       return { ok: false, error: `HTTP ${res.status}：${t.slice(0, 120)}` };
     }
     const data = await res.json();
-    const voices = (data.voices || []).map((v) => {
+    const all = (data.voices || []).map((v) => {
       const labels = v.labels || {};
       const desc = [labels.accent, labels.gender, labels.description].filter(Boolean).join(' · ');
-      return { id: v.voice_id, name: v.name, desc };
+      return { id: v.voice_id, name: v.name, desc, category: v.category };
     });
-    return { ok: true, voices };
+    // 只顯示「我的聲音」（排除 ElevenLabs 內建的 premade 庫存）；若沒有則退回全部
+    const mine = all.filter((v) => v.category !== 'premade');
+    return { ok: true, voices: mine.length ? mine : all };
   } catch (e) {
     if (e.name === 'AbortError') return { ok: false, error: '逾時' };
     return { ok: false, error: e.message };
