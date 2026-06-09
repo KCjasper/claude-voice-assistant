@@ -88,9 +88,22 @@ function render(s) {
 window.api.getSession().then(render).catch(() => {});
 window.api.onSessionState(render);
 
-// === ESC 收回浮窗 ===
+// === 鍵盤快捷鍵（#14）===
+// 表單聚焦時忽略，避免打字觸發
+function isFormFocused() {
+  const el = document.activeElement;
+  return !!el && /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName || '');
+}
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') window.api.collapseToFloating();
+  if (isFormFocused()) return;
+  if (e.key === 'Escape') {
+    window.api.collapseToFloating();
+  } else if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+    e.preventDefault();
+    window.api.openSettings();
+  }
+  // Space（錄音）與 Ctrl+Q（中斷）暫不接：
+  //   錄音控制器在浮窗、後端取消契約（#8）尚未提供，標籤已移除。
 });
 
 // === 視窗控制 ===
