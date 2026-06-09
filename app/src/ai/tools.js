@@ -3,11 +3,10 @@
 
 const fs = require('fs');
 const path = require('path');
-const https = require('https');
-const http = require('http');
 const store = require('../config/store');
 const search = require('./search');
 const cancellation = require('../tasks/cancellation');
+const urlFetch = require('./url-fetch');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..', '..');
 
@@ -142,60 +141,6 @@ function listDirectory(args) {
   return lines.join('\n') || '（空目錄）';
 }
 
-function fetchUrl(args, { signal } = {}) {
-  cancellation.throwIfAborted(signal);
-  return new Promise((resolve, reject) => {
-    let url;
-    try { url = new URL(args.url); } catch { return resolve('錯誤：網址格式不正確'); }
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') return resolve('錯誤：只支援 http/https');
-
-    const lib = url.protocol === 'https:' ? https : http;
-    let settled = false;
-    let req;
-    const finish = (fn, value) => {
-      if (settled) return;
-      settled = true;
-      signal?.removeEventListener('abort', onAbort);
-      fn(value);
-    };
-    const onAbort = () => {
-      const error = cancellation.isAbortError(signal.reason)
-        ? signal.reason
-        : cancellation.createAbortError();
-      finish(reject, error);
-      try { req?.destroy(error); } catch {}
-    };
-    signal?.addEventListener('abort', onAbort, { once: true });
-
-    req = lib.get(url, { headers: { 'User-Agent': 'VoiceAssistant/0.1' }, timeout: 12000 }, (res) => {
-      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        // 簡單 follow 一次 redirect
-        res.resume();
-        return finish(
-          resolve,
-          fetchUrl({ url: new URL(res.headers.location, url).href }, { signal })
-        );
-      }
-      let data = '';
-      res.on('data', (c) => { data += c; if (data.length > 200000) req.destroy(); });
-      res.on('end', () => {
-        // 粗略去 HTML 標籤，保留純文字
-        const text = data
-          .replace(/<script[\s\S]*?<\/script>/gi, '')
-          .replace(/<style[\s\S]*?<\/style>/gi, '')
-          .replace(/<[^>]+>/g, ' ')
-          .replace(/\s+/g, ' ')
-          .trim();
-        settled = true;
-        signal?.removeEventListener('abort', onAbort);
-        resolve(text.slice(0, 8000) || '（沒有抓到文字內容）');
-      });
-    });
-    req.on('error', (e) => resolve(`錯誤：抓取失敗 ${e.message}`));
-    req.on('timeout', () => { req.destroy(); resolve('錯誤：抓取逾時'); });
-  });
-}
-
 // ===== 統一派發 =====
 async function execute(name, args, opts = {}) {
   try {
@@ -204,7 +149,7 @@ async function execute(name, args, opts = {}) {
       case 'read_file': return readFile(args);
       case 'write_file': return writeFile(args);
       case 'list_directory': return listDirectory(args);
-      case 'fetch_url': return await fetchUrl(args, opts);
+      case 'fetch_url': return await urlFetch.fetchUrl(args.url, opts);
       case 'web_search': return await search.webSearch(args.query, args.count || 5, opts);
       default: return `錯誤：未知的工具 ${name}`;
     }
