@@ -2,44 +2,22 @@
 // 所有檔案操作都限制在工作資料夾內，防止路徑逃逸
 
 const fs = require('fs');
-const path = require('path');
 const store = require('../config/store');
 const search = require('./search');
 const cancellation = require('../tasks/cancellation');
 const urlFetch = require('./url-fetch');
 const fileWrite = require('./file-write');
+const workspacePolicy = require('../config/workspace-policy');
 
-const PROJECT_ROOT = path.resolve(__dirname, '..', '..', '..');
-
-function isInsideRoot(root, target) {
-  const rel = path.relative(root, target);
-  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
-}
-
-function normalizeRoot(p) {
-  return path.resolve(p);
-}
-
-// 工作資料夾根目錄預設為 repo root；prefs.workspaceDir 只能縮小到 repo 內。
 function workspaceRoot() {
-  const prefs = store.loadPrefs();
-  const root = normalizeRoot(PROJECT_ROOT);
-  if (prefs.workspaceDir) {
-    const configured = normalizeRoot(prefs.workspaceDir);
-    if (fs.existsSync(configured) && isInsideRoot(root, configured)) return configured;
-  }
-  return root;
+  return store.getWorkspaceState().workspaceDir;
 }
 
-// 把使用者給的相對/絕對路徑解析成「保證在工作資料夾內」的絕對路徑
-function safeResolve(p) {
-  const root = workspaceRoot();
-  const resolved = path.resolve(root, p || '.');
-  const rel = path.relative(root, resolved);
-  if (rel.startsWith('..') || path.isAbsolute(rel)) {
-    throw new Error(`路徑超出工作資料夾範圍：${p}`);
-  }
-  return resolved;
+function safeResolve(p, { allowRoot = false } = {}) {
+  return workspacePolicy.resolveWorkspacePath(workspaceRoot(), p, {
+    allowRoot,
+    mustExist: true,
+  });
 }
 
 // ===== 工具的 JSON schema（給模型看的）=====
@@ -132,7 +110,7 @@ function readFile(args) {
 }
 
 function listDirectory(args) {
-  const dp = safeResolve(args.path || '.');
+  const dp = safeResolve(args.path || '.', { allowRoot: true });
   if (!fs.existsSync(dp)) return `錯誤：找不到目錄 ${args.path}`;
   const entries = fs.readdirSync(dp, { withFileTypes: true });
   const lines = entries.map((e) => (e.isDirectory() ? `[資料夾] ${e.name}` : `        ${e.name}`));

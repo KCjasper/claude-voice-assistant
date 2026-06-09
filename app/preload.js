@@ -17,6 +17,12 @@ contextBridge.exposeInMainWorld('api', {
   getPrefs: () => ipcRenderer.invoke('config:get-prefs'),
   savePrefs: (partial) => ipcRenderer.invoke('config:save-prefs', partial),
 
+  // ===== Workspace folders =====
+  getWorkspace: () => ipcRenderer.invoke('workspace:get'),
+  chooseWorkspace: () => ipcRenderer.invoke('workspace:choose'),
+  setActiveWorkspace: (folderPath) => ipcRenderer.invoke('workspace:set', folderPath),
+  removeWorkspace: (folderPath) => ipcRenderer.invoke('workspace:remove', folderPath),
+
   // ===== API Key（加密）=====
   saveApiKey: (key) => ipcRenderer.invoke('config:save-api-key', key),
   hasApiKey: () => ipcRenderer.invoke('config:has-api-key'),

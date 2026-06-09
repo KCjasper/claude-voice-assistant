@@ -1,7 +1,7 @@
 // main.js — Electron 主程序
 // 管理三個視窗：floating（浮窗）、fullscreen（Ops Center）、settings（設定）
 
-const { app, BrowserWindow, screen, ipcMain, globalShortcut } = require('electron');
+const { app, BrowserWindow, screen, ipcMain, globalShortcut, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const store = require('./src/config/store');
@@ -160,6 +160,62 @@ ipcMain.handle('config:get-prefs', async () => {
 
 ipcMain.handle('config:save-prefs', async (event, partial) => {
   return store.savePrefs(partial);
+});
+
+function workspaceError(error) {
+  return {
+    ok: false,
+    error: error?.message || 'Workspace operation failed.',
+    code: error?.code || 'WORKSPACE_ERROR',
+    details: error?.details || {},
+  };
+}
+
+ipcMain.handle('workspace:get', async () => {
+  try {
+    return { ok: true, state: store.getWorkspaceState() };
+  } catch (error) {
+    return workspaceError(error);
+  }
+});
+
+ipcMain.handle('workspace:choose', async (event) => {
+  try {
+    const parent = BrowserWindow.fromWebContents(event.sender);
+    const options = {
+      title: 'Choose workspace folder',
+      properties: ['openDirectory', 'createDirectory'],
+    };
+    const result = parent
+      ? await dialog.showOpenDialog(parent, options)
+      : await dialog.showOpenDialog(options);
+    if (result.canceled || !result.filePaths[0]) {
+      return { ok: true, canceled: true, state: store.getWorkspaceState() };
+    }
+    return {
+      ok: true,
+      canceled: false,
+      state: store.approveWorkspace(result.filePaths[0]),
+    };
+  } catch (error) {
+    return workspaceError(error);
+  }
+});
+
+ipcMain.handle('workspace:set', async (event, folderPath) => {
+  try {
+    return { ok: true, state: store.setWorkspace(folderPath) };
+  } catch (error) {
+    return workspaceError(error);
+  }
+});
+
+ipcMain.handle('workspace:remove', async (event, folderPath) => {
+  try {
+    return { ok: true, state: store.removeWorkspace(folderPath) };
+  } catch (error) {
+    return workspaceError(error);
+  }
 });
 
 // ========== IPC：API Key 加密讀寫 ==========

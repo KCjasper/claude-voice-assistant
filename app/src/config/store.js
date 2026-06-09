@@ -4,10 +4,12 @@
 const { app, safeStorage } = require('electron');
 const fs = require('fs');
 const path = require('path');
+const workspacePolicy = require('./workspace-policy');
 
 const CONFIG_DIR = () => app.getPath('userData');
 const KEY_FILE   = () => path.join(CONFIG_DIR(), 'apikey.enc');
 const PREFS_FILE = () => path.join(CONFIG_DIR(), 'prefs.json');
+const PROJECT_ROOT = path.resolve(__dirname, '..', '..', '..');
 
 const DEFAULT_PREFS = {
   baseUrl: 'https://clawrouter.com/v1',
@@ -25,6 +27,8 @@ const DEFAULT_PREFS = {
   ttsEngine: 'edge',           // 'edge'（免費）| 'elevenlabs'（真人級）
   elevenVoiceId: '',           // ElevenLabs 選定的聲音 ID
   elevenModel: 'eleven_multilingual_v2',
+  workspaceDir: '',            // 空字串代表內建 repo root
+  approvedFolders: [],         // 使用者透過原生 picker 明確授權的外部資料夾
 };
 
 // ===== 通用加密 secret（搜尋 key、未來 OAuth token 等）=====
@@ -90,6 +94,8 @@ function loadPrefs() {
     if (typeof prefs.defaultModel === 'string' && prefs.defaultModel.startsWith('anthropic/')) {
       prefs.defaultModel = DEFAULT_PREFS.defaultModel;
     }
+    prefs.approvedFolders = workspacePolicy.normalizeApprovedFolders(prefs.approvedFolders);
+    if (typeof prefs.workspaceDir !== 'string') prefs.workspaceDir = '';
     return prefs;
   } catch (e) {
     return { ...DEFAULT_PREFS };
@@ -112,6 +118,8 @@ function savePrefs(partial) {
   const cur = loadPrefs();
   const editable = { ...(partial || {}) };
   delete editable.usage;
+  delete editable.workspaceDir;
+  delete editable.approvedFolders;
   const next = { ...cur, ...editable };
   writePrefs(next);
   return next;
@@ -122,6 +130,97 @@ function saveUsage(usage) {
   const next = { ...cur, usage };
   writePrefs(next);
   return next;
+}
+
+function workspaceValidationOptions(options = {}) {
+  return {
+    homeDir: app.getPath('home'),
+    ...options,
+  };
+}
+
+function getWorkspaceState(options = {}) {
+  const prefs = loadPrefs();
+  const activePath = workspacePolicy.resolveActiveWorkspace(
+    prefs,
+    PROJECT_ROOT,
+    workspaceValidationOptions(options)
+  );
+  return {
+    workspaceDir: activePath,
+    isDefault: workspacePolicy.samePath(activePath, PROJECT_ROOT),
+    approvedFolders: prefs.approvedFolders,
+  };
+}
+
+function approveWorkspace(folderPath, options = {}) {
+  const approved = workspacePolicy.validateWorkspaceCandidate(
+    folderPath,
+    workspaceValidationOptions(options)
+  );
+  const cur = loadPrefs();
+  const approvedFolders = workspacePolicy.normalizeApprovedFolders([
+    ...cur.approvedFolders,
+    approved,
+  ]);
+  const next = {
+    ...cur,
+    workspaceDir: approved.path,
+    approvedFolders,
+  };
+  writePrefs(next);
+  return getWorkspaceState(options);
+}
+
+function setWorkspace(folderPath, options = {}) {
+  if (typeof folderPath !== 'string' || !folderPath.trim()) {
+    throw new workspacePolicy.WorkspacePolicyError(
+      'WORKSPACE_INVALID_PATH',
+      'A workspace path is required.'
+    );
+  }
+
+  const cur = loadPrefs();
+  if (workspacePolicy.samePath(path.resolve(folderPath), PROJECT_ROOT)) {
+    writePrefs({ ...cur, workspaceDir: '' });
+    return getWorkspaceState(options);
+  }
+
+  const approved = workspacePolicy.findApprovedFolder(cur.approvedFolders, folderPath);
+  if (!approved) {
+    throw new workspacePolicy.WorkspacePolicyError(
+      'WORKSPACE_NOT_APPROVED',
+      'The folder has not been approved by the user.'
+    );
+  }
+  const validated = workspacePolicy.validateWorkspaceCandidate(
+    approved.path,
+    workspaceValidationOptions(options)
+  );
+  writePrefs({ ...cur, workspaceDir: validated.path });
+  return getWorkspaceState(options);
+}
+
+function removeWorkspace(folderPath, options = {}) {
+  if (typeof folderPath !== 'string' || !folderPath.trim()) {
+    throw new workspacePolicy.WorkspacePolicyError(
+      'WORKSPACE_INVALID_PATH',
+      'A workspace path is required.'
+    );
+  }
+
+  const cur = loadPrefs();
+  const approvedFolders = cur.approvedFolders.filter(
+    (entry) => !workspacePolicy.samePath(entry.path, path.resolve(folderPath))
+  );
+  const removedActive = cur.workspaceDir
+    && workspacePolicy.samePath(cur.workspaceDir, path.resolve(folderPath));
+  writePrefs({
+    ...cur,
+    workspaceDir: removedActive ? '' : cur.workspaceDir,
+    approvedFolders,
+  });
+  return getWorkspaceState(options);
 }
 
 // ===== 連線測試 =====
@@ -161,6 +260,10 @@ module.exports = {
   loadPrefs,
   savePrefs,
   saveUsage,
+  getWorkspaceState,
+  approveWorkspace,
+  setWorkspace,
+  removeWorkspace,
   testConnection,
   saveSecret,
   loadSecret,
