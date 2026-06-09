@@ -1,0 +1,54 @@
+# HANDOFF · 接手指南（給新 session / 新 AI 同事）
+
+> 這份檔案是「記憶外化」——讓新對話一開場讀完就能接手，不必重看舊對話。
+> 搭配 `README.md`（架構/進度）一起看。最後更新：2026-06-09。
+
+## 開場 60 秒要做的事
+1. 讀這份 `HANDOFF.md` + `README.md`
+2. `git fetch && git log --oneline -10`（看最近改了什麼）
+3. `gh issue list --repo KCjasper/claude-voice-assistant`（看待辦與責任歸屬）
+   - gh 已安裝且已登入（`C:\Program Files\GitHub CLI\gh.exe`，帳號 KCjasper）
+
+## 我的角色 / 協作模式
+- **我（KC + Claude）負責前端**：`renderer.js`、`fullscreen.*`、`settings.*`、`index.html`、樣式、UI/UX。issue 標 `frontend`。
+- **AI 同事負責後端**：`main.js`、`src/`（引擎、用量、STT、工具、安全）。issue 標 `backend`。
+- 新功能**先開 issue 並標清前後端**，各做各的；後端同事 UI/UX 不好，前端盡量留給我。
+- `preload.js` 是前後端契約，改動要協調。
+- 共用 `main` 分支：**嚴守 pull-before-push**（commit → `git pull --rebase` → push）。
+- 回退用 `git revert`（**不要** `git reset --hard`，會跟同事的 push 打架）。
+- 每次動工前先 `git fetch` + 看 issues。
+
+## 開發 / 重啟流程（重要眉角）
+- 啟動：`cd app && npm start`
+- **重啟前一定要先殺掉現有 electron**（有單一實例鎖，不殺的話新版起不來、跑的還是舊版）：
+  ```powershell
+  Get-CimInstance Win32_Process -Filter "name='electron.exe'" |
+    Where-Object { $_.CommandLine -like '*voice-assistant*' } |
+    ForEach-Object { taskkill /PID $_.ProcessId /T /F }
+  ```
+- 改 `renderer/settings/fullscreen` 的 HTML/CSS/JS → 重開該視窗就生效；改 `main.js` 或 `src/` → 要完整重啟。
+- 語法檢查 `node --check <file>`；測試 `npm test`（node:test）。
+- 要實測需要 API key 的東西：在 `tools/` 寫一次性 electron 腳本，用 `.\node_modules\.bin\electron.cmd tools/x.js` 跑、結果寫到 temp 檔再讀，**跑完刪掉**（electron 主程序 console.log 在 Windows 看不到，所以寫檔）。
+
+## 一定要知道的架構事實
+- **AI 閘道 = Claw Router**（OpenAI 相容）。model id 是**裸的**：`claude-sonnet-4-6`、`claude-opus-4-8`、`gpt-5.5`、`gemini-3-pro-preview` 等，**沒有** `anthropic/` 前綴（用了會「無可用渠道」）。
+- **用量已由後端接管**：`src/usage/ledger.js` + `policy.js`，`main.js` 的 `ai:chat` 自己記錄用量 + 擋月額上限。前端**只消費** `ai:chat` 回傳的 `res.usageSummary`，**不要**再加前端用量記錄（#6 已做）。被擋的 code：`MONTHLY_CAP_REACHED` / `MODEL_PRICE_UNKNOWN` / `AI_BUSY`。
+- **串流用量不準**：Claw Router 串流回報 `prompt_tokens≈1`，`engine.js` 的 `reconcileUsage()` 用本地估算修正（成本為「約略」）。
+- **工作資料夾鎖在 repo root**（後端 #2）。放寬到任意資料夾的功能規劃在 #18/#19/#20。
+- **Ops Center 資料流**：浮窗 `renderer.js` 維護 `session` 物件，用 `window.api.pushSession(session)` → `main.js` 中繼 → 全螢幕 `fullscreen.js` 渲染。要改全螢幕顯示什麼，就改 `session` 內容 + `fullscreen.js`。
+- **取消機制**：`src/tasks/cancellation.js`（後端 #8），signal 已接進 STT/TTS/工具。
+- **TTS**：Edge（免費，14 中文 + 英式男聲）+ ElevenLabs（`prefs.ttsEngine='elevenlabs'`，走 v2 只列「我的聲音」）。KC 帳號有一個叫 **Jarvis** 的聲音。
+- **金鑰**：全部走 `store.saveSecret`/`safeStorage` 加密，設定頁輸入，**絕不**經過聊天。
+
+## 我的待辦（前端）
+- **#20** 工作資料夾切換 UI — 等後端 #18/#19 的 IPC 先好
+- **#23 / #24** 手機遠端的網頁客戶端 + 桌面管理 UI — 等後端 #21/#22 伺服器先好
+- **#14 的 Ctrl+Q 中斷** — 後端 #8 取消契約已就緒，現在可接（原本因無契約而暫緩）
+
+## KC（使用者）偏好
+- 用**繁體中文**溝通；不太懂技術，請白話解釋、不要丟一堆術語。
+- 要安裝/下載東西前先說明是什麼、安不安全。
+- 工作區 `Claude-workspace/_context/` 有 `about-me.md`、`lessons-learned.md`（每次對話會自動讀）。
+
+## Repo
+https://github.com/KCjasper/claude-voice-assistant（公開）
