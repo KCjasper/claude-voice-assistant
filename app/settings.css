@@ -121,10 +121,21 @@ html,body{
 }
 .field select{
   appearance:none;
+  color-scheme:dark;  /* 讓 Chromium 原生下拉彈窗用深色主題 */
   background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2393c5fd' d='M6 8L0 0h12z'/%3E%3C/svg%3E");
   background-repeat:no-repeat;
   background-position:right 12px center;
   padding-right:32px;
+}
+/* 下拉打開後的選項清單：深底白字（避免白底白字看不清）*/
+.field select option,
+.field select optgroup{
+  background:#16213a;
+  color:#fff;
+}
+.field select optgroup{
+  font-weight:600;
+  color:#93c5fd;
 }
 .static-value{
   color:rgba(255,255,255,0.6);
