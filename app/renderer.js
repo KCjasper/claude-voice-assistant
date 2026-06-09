@@ -312,6 +312,12 @@ btnMic.addEventListener('click', toggleRecording);
 // ===== 全域熱鍵（從 main 推來） =====
 window.api.onHotkeyToggleRecord(() => toggleRecording());
 
+// ===== 被中斷（Ops Center 的 Ctrl+Q）→ 停止正在播的 TTS =====
+window.api.onPlaybackStop(() => {
+  resetSpeakQueue();
+  setState('idle', { detail: '已中斷', clearTranscript: false });
+});
+
 // ===== Whisper 進度顯示 =====
 // 後端事件有兩類：生命週期用 `phase`、下載/解壓進度用 `stage`+`step`
 function mb(n) { return (n / 1048576).toFixed(0); }

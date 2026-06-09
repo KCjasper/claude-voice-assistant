@@ -105,7 +105,7 @@ document.addEventListener('keydown', (e) => {
     // 中斷目前任務：呼叫後端取消契約（#8 的 ai:cancel，不帶 id = 取消所有進行中的 ai 任務）。
     // 取消後後端會更新 session 狀態，Ops Center 透過 session:state 自動重繪。
     e.preventDefault();
-    window.api.cancelAi().catch(() => {});
+    window.api.interrupt().catch(() => {}); // 取消後端 ai/tts + 停浮窗播放
   }
   // Space（錄音）暫不接：錄音控制器在浮窗，跨視窗觸發需後端共用控制器，標籤已移除。
 });

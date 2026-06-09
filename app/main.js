@@ -200,6 +200,16 @@ ipcMain.handle('ai:cancel', async (event, requestId) => cancelTasks('ai', reques
 ipcMain.handle('stt:cancel', async (event, requestId) => cancelTasks('stt', requestId));
 ipcMain.handle('tts:cancel', async (event, requestId) => cancelTasks('tts', requestId));
 
+// 全面中斷（給 Ops Center 的 Ctrl+Q）：取消後端 ai/tts 任務 + 通知浮窗停止正在播的 TTS
+ipcMain.handle('app:interrupt', async () => {
+  cancelTasks('ai');
+  cancelTasks('tts');
+  if (floatingWindow && !floatingWindow.isDestroyed()) {
+    try { floatingWindow.webContents.send('playback:stop'); } catch {}
+  }
+  return { ok: true };
+});
+
 // ========== IPC：錄音檔儲存 ==========
 function getRecordingDir() {
   const dir = path.join(app.getPath('temp'), 'voice-assistant', 'recordings');
