@@ -5,6 +5,7 @@ const OpenAI = require('openai');
 const store = require('../config/store');
 const tools = require('./tools');
 const pricing = require('./pricing');
+const cancellation = require('../tasks/cancellation');
 
 const MAX_ITERATIONS = 8;
 const MAX_HISTORY = 20; // 保留最近幾則對話（控制 token 成本）
@@ -105,15 +106,20 @@ function emitSentences(bufferRef, onSentence) {
 }
 
 // 串流一回合：邊收 content / tool_call deltas，邊把完整句子丟給 onSentence
-async function streamOnce(client, params, onSentence) {
+async function streamOnce(client, params, onSentence, signal) {
+  cancellation.throwIfAborted(signal);
   let stream;
   try {
     stream = await client.chat.completions.create({
       ...params, stream: true, stream_options: { include_usage: true },
-    });
+    }, { signal });
   } catch (e) {
+    if (cancellation.isAbortError(e) || signal?.aborted) throw e;
     // 有些情況不支援 stream_options，退回不帶該參數
-    stream = await client.chat.completions.create({ ...params, stream: true });
+    stream = await client.chat.completions.create(
+      { ...params, stream: true },
+      { signal }
+    );
   }
 
   let content = '';
@@ -122,6 +128,7 @@ async function streamOnce(client, params, onSentence) {
   const toolCalls = [];
 
   for await (const chunk of stream) {
+    cancellation.throwIfAborted(signal);
     if (chunk.usage) usage = chunk.usage;
     const delta = chunk.choices?.[0]?.delta;
     if (!delta) continue;
@@ -156,12 +163,14 @@ async function streamOnce(client, params, onSentence) {
  */
 async function chat(userText, opts = {}) {
   const onProgress = opts.onProgress || (() => {});
+  const signal = opts.signal;
   let client;
   try { client = getClient(); } catch (e) { return { ok: false, error: e.message }; }
 
   const prefs = store.loadPrefs();
   const model = opts.model || prefs.defaultModel || 'claude-sonnet-4-6';
 
+  const historyBeforeTurn = history.slice();
   history.push({ role: 'user', content: userText });
   if (history.length > MAX_HISTORY) history = history.slice(-MAX_HISTORY);
 
@@ -171,12 +180,18 @@ async function chat(userText, opts = {}) {
 
   try {
     for (let i = 0; i < MAX_ITERATIONS; i++) {
+      cancellation.throwIfAborted(signal);
       onProgress({ phase: 'thinking', iteration: i });
 
       const { content, tool_calls, usage: u } = await streamOnce(
         client,
         { model, messages, tools: tools.schema, tool_choice: 'auto' },
-        (sentence) => { fullText += (fullText ? ' ' : '') + sentence; onProgress({ phase: 'sentence', text: sentence }); }
+        (sentence) => {
+          cancellation.throwIfAborted(signal);
+          fullText += (fullText ? ' ' : '') + sentence;
+          onProgress({ phase: 'sentence', text: sentence });
+        },
+        signal
       );
       addUsage(usage, u);
 
@@ -187,10 +202,12 @@ async function chat(userText, opts = {}) {
 
       if (tool_calls.length > 0) {
         for (const tc of tool_calls) {
+          cancellation.throwIfAborted(signal);
           let parsedArgs = {};
           try { parsedArgs = JSON.parse(tc.function.arguments || '{}'); } catch {}
           onProgress({ phase: 'tool', name: tc.function.name, args: parsedArgs });
-          const result = await tools.execute(tc.function.name, parsedArgs);
+          const result = await tools.execute(tc.function.name, parsedArgs, { signal });
+          cancellation.throwIfAborted(signal);
           const toolMsg = {
             role: 'tool', tool_call_id: tc.id,
             content: typeof result === 'string' ? result : JSON.stringify(result),
@@ -209,6 +226,15 @@ async function chat(userText, opts = {}) {
 
     return { ok: false, error: `工具呼叫超過上限（${MAX_ITERATIONS} 次），可能卡住了`, usage };
   } catch (e) {
+    if (cancellation.isAbortError(e) || signal?.aborted) {
+      history = historyBeforeTurn;
+      return {
+        ok: false,
+        code: 'CANCELLED',
+        cancelled: true,
+        error: 'AI request cancelled.',
+      };
+    }
     const detail = e?.error?.message || e?.message || String(e);
     return { ok: false, error: `AI 呼叫失敗：${detail}` };
   }

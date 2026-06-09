@@ -2,21 +2,21 @@
 // 依 prefs.searchProvider 與已儲存的 key 自動選擇
 
 const store = require('../config/store');
+const cancellation = require('../tasks/cancellation');
 
-function timeoutFetch(url, options = {}, ms = 10000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), ms);
-  return fetch(url, { ...options, signal: controller.signal })
-    .finally(() => clearTimeout(timer));
+function timeoutFetch(url, options = {}, ms = 10000, parentSignal) {
+  const timeout = cancellation.timeoutSignal(parentSignal, ms);
+  return fetch(url, { ...options, signal: timeout.signal })
+    .finally(timeout.cleanup);
 }
 
-async function braveSearch(query, count) {
+async function braveSearch(query, count, signal) {
   const key = store.loadSecret('braveSearchKey');
   if (!key) return { ok: false, error: '尚未設定 Brave Search API Key' };
   const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${count}`;
   const res = await timeoutFetch(url, {
     headers: { 'Accept': 'application/json', 'X-Subscription-Token': key },
-  });
+  }, 10000, signal);
   if (!res.ok) return { ok: false, error: `Brave HTTP ${res.status}` };
   const data = await res.json();
   const results = (data.web?.results || []).slice(0, count).map((r) => ({
@@ -25,14 +25,14 @@ async function braveSearch(query, count) {
   return { ok: true, results };
 }
 
-async function tavilySearch(query, count) {
+async function tavilySearch(query, count, signal) {
   const key = store.loadSecret('tavilySearchKey');
   if (!key) return { ok: false, error: '尚未設定 Tavily API Key' };
   const res = await timeoutFetch('https://api.tavily.com/search', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ api_key: key, query, max_results: count, search_depth: 'basic' }),
-  });
+  }, 10000, signal);
   if (!res.ok) {
     const t = await res.text().catch(() => '');
     return { ok: false, error: `Tavily HTTP ${res.status}：${t.slice(0, 120)}` };
@@ -46,13 +46,13 @@ async function tavilySearch(query, count) {
   return { ok: true, results };
 }
 
-async function googleSearch(query, count) {
+async function googleSearch(query, count, signal) {
   const key = store.loadSecret('googleSearchKey');
   const cx = store.loadPrefs().googleCx;
   if (!key) return { ok: false, error: '尚未設定 Google Search API Key' };
   if (!cx) return { ok: false, error: '尚未設定 Google 搜尋引擎 ID (cx)' };
   const url = `https://www.googleapis.com/customsearch/v1?key=${key}&cx=${cx}&q=${encodeURIComponent(query)}&num=${Math.min(count, 10)}`;
-  const res = await timeoutFetch(url, {});
+  const res = await timeoutFetch(url, {}, 10000, signal);
   if (!res.ok) return { ok: false, error: `Google HTTP ${res.status}` };
   const data = await res.json();
   const results = (data.items || []).slice(0, count).map((r) => ({
@@ -64,17 +64,22 @@ async function googleSearch(query, count) {
 /**
  * 執行搜尋，回傳給模型看的純文字
  */
-async function webSearch(query, count = 5) {
+async function webSearch(query, count = 5, opts = {}) {
   if (!query || !query.trim()) return '錯誤：搜尋關鍵字為空';
   const provider = store.loadPrefs().searchProvider || 'tavily';
+  const signal = opts.signal;
 
   let r;
   try {
-    if (provider === 'google') r = await googleSearch(query, count);
-    else if (provider === 'brave') r = await braveSearch(query, count);
-    else r = await tavilySearch(query, count); // 預設 tavily
+    cancellation.throwIfAborted(signal);
+    if (provider === 'google') r = await googleSearch(query, count, signal);
+    else if (provider === 'brave') r = await braveSearch(query, count, signal);
+    else r = await tavilySearch(query, count, signal); // 預設 tavily
   } catch (e) {
-    if (e.name === 'AbortError') return '錯誤：搜尋逾時';
+    if (signal?.aborted) throw signal.reason || cancellation.createAbortError();
+    if (e.name === 'AbortError' || e.name === 'TimeoutError' || e.code === 'TIMEOUT') {
+      return '錯誤：搜尋逾時';
+    }
     return `錯誤：搜尋失敗 ${e.message}`;
   }
 

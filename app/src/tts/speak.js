@@ -2,6 +2,7 @@
 // 把文字合成成 MP3 buffer，交給渲染端播放
 
 const { MsEdgeTTS, OUTPUT_FORMAT } = require('msedge-tts');
+const cancellation = require('../tasks/cancellation');
 
 const DEFAULT_VOICE = 'zh-TW-HsiaoChenNeural';
 
@@ -24,6 +25,8 @@ function rateToSSML(rate) {
 async function synthesize(text, opts = {}) {
   const clean = (text || '').trim();
   if (!clean) return { ok: false, error: '沒有要念的文字' };
+  const signal = opts.signal;
+  cancellation.throwIfAborted(signal);
 
   const voice = opts.voice || DEFAULT_VOICE;
   const rateStr = rateToSSML(opts.rate);
@@ -32,6 +35,7 @@ async function synthesize(text, opts = {}) {
   try {
     tts = new MsEdgeTTS();
     await tts.setMetadata(voice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3);
+    cancellation.throwIfAborted(signal);
   } catch (e) {
     return { ok: false, error: `TTS 初始化失敗：${e.message}` };
   }
@@ -44,11 +48,34 @@ async function synthesize(text, opts = {}) {
     const chunks = [];
 
     const buf = await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('TTS 合成逾時（15 秒）')), 15000);
+      let settled = false;
+      let timer;
+      const finish = (fn, value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', onAbort);
+        fn(value);
+      };
+      const onAbort = () => {
+        const error = cancellation.isAbortError(signal.reason)
+          ? signal.reason
+          : cancellation.createAbortError();
+        finish(reject, error);
+        try { audioStream.destroy(error); } catch {}
+        try { tts.close(); } catch {}
+      };
+      const onTimeout = () => {
+        finish(reject, new Error('TTS 合成逾時（15 秒）'));
+        try { audioStream.destroy(); } catch {}
+        try { tts.close(); } catch {}
+      };
+      signal?.addEventListener('abort', onAbort, { once: true });
+      timer = setTimeout(onTimeout, 15000);
       audioStream.on('data', (c) => chunks.push(c));
-      audioStream.on('end', () => { clearTimeout(timer); resolve(Buffer.concat(chunks)); });
-      audioStream.on('close', () => { clearTimeout(timer); resolve(Buffer.concat(chunks)); });
-      audioStream.on('error', (e) => { clearTimeout(timer); reject(e); });
+      audioStream.on('end', () => finish(resolve, Buffer.concat(chunks)));
+      audioStream.on('close', () => finish(resolve, Buffer.concat(chunks)));
+      audioStream.on('error', (e) => finish(reject, e));
     });
 
     try { tts.close(); } catch {}
@@ -57,6 +84,9 @@ async function synthesize(text, opts = {}) {
     return { ok: true, audioBase64: buf.toString('base64') };
   } catch (e) {
     try { tts.close(); } catch {}
+    if (cancellation.isAbortError(e) || signal?.aborted) {
+      return { ok: false, code: 'CANCELLED', cancelled: true, error: 'Speech synthesis cancelled.' };
+    }
     return { ok: false, error: `TTS 合成失敗：${e.message}` };
   }
 }

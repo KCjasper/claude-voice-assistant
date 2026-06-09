@@ -11,6 +11,7 @@ const eleven = require('./src/tts/elevenlabs');
 const engine = require('./src/ai/engine');
 const usageLedger = require('./src/usage/ledger');
 const usagePolicy = require('./src/usage/policy');
+const cancellation = require('./src/tasks/cancellation');
 
 const FLOATING_W = 340, FLOATING_H = 520, EDGE = 24;
 const FULLSCREEN_PADDING = 0;
@@ -19,7 +20,14 @@ const SETTINGS_W = 520, SETTINGS_H = 720;
 let floatingWindow = null;
 let fullscreenWindow = null;
 let settingsWindow = null;
-let aiChatInFlight = false;
+const taskRegistry = new cancellation.TaskRegistry({
+  onState: (state) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (window.isDestroyed()) continue;
+      try { window.webContents.send('task:state', state); } catch {}
+    }
+  },
+});
 
 // ========== 浮動視窗 ==========
 function createFloatingWindow() {
@@ -179,6 +187,19 @@ ipcMain.handle('config:save-secret', async (event, name, value) => {
 ipcMain.handle('config:has-secret', async (event, name) => store.hasSecret(name));
 ipcMain.handle('config:clear-secret', async (event, name) => { store.clearSecret(name); return { ok: true }; });
 
+// ========== IPC: cancellable task control ==========
+function cancelTasks(type, requestId) {
+  const cancelled = taskRegistry.cancel({ type, id: requestId });
+  return { ok: true, cancelled, count: cancelled.length };
+}
+
+ipcMain.handle('task:cancel', async (event, target = {}) => {
+  return cancelTasks(target.type, target.requestId);
+});
+ipcMain.handle('ai:cancel', async (event, requestId) => cancelTasks('ai', requestId));
+ipcMain.handle('stt:cancel', async (event, requestId) => cancelTasks('stt', requestId));
+ipcMain.handle('tts:cancel', async (event, requestId) => cancelTasks('tts', requestId));
+
 // ========== IPC：錄音檔儲存 ==========
 function getRecordingDir() {
   const dir = path.join(app.getPath('temp'), 'voice-assistant', 'recordings');
@@ -224,41 +245,81 @@ ipcMain.handle('stt:transcribe', async (event, wavPath, opts) => {
   const sender = event.sender;
   const prefs = store.loadPrefs();
   const model = (opts && opts.model) || prefs.sttModel || 'medium-q5';
+  const task = taskRegistry.start('stt');
+  let status = 'failed';
 
-  const result = await whisper.transcribe(wavPath, {
-    model,
-    language: (opts && opts.language) || 'zh',
-    prompt: opts && opts.prompt,
-    gpu: prefs.sttUseGpu !== false,
-    onProgress: (p) => {
-      try { sender.send('stt:progress', p); } catch {}
-    },
-  });
-
-  // 用完即刪：暫存錄音 + whisper 產生的同名 .txt（避免暫存資料夾無限膨脹）
   try {
-    if (fs.existsSync(wavPath)) fs.unlinkSync(wavPath);
-    const txt = wavPath.replace(/\.wav$/i, '.txt');
-    if (fs.existsSync(txt)) fs.unlinkSync(txt);
-  } catch {}
+    const result = await whisper.transcribe(wavPath, {
+      model,
+      language: (opts && opts.language) || 'zh',
+      prompt: opts && opts.prompt,
+      gpu: prefs.sttUseGpu !== false,
+      signal: task.signal,
+      onProgress: (p) => {
+        try { sender.send('stt:progress', { ...p, requestId: task.id }); } catch {}
+      },
+    });
 
-  return result;
+    if (task.signal.aborted || result.cancelled) {
+      status = 'cancelled';
+      return cancellation.cancelledResult(task.id);
+    }
+
+    status = result.ok ? 'completed' : 'failed';
+    return { ...result, requestId: task.id };
+  } catch (error) {
+    if (cancellation.isAbortError(error) || task.signal.aborted) {
+      status = 'cancelled';
+      return cancellation.cancelledResult(task.id);
+    }
+    return { ok: false, requestId: task.id, error: error.message };
+  } finally {
+    // Remove temporary audio and whisper output even when cancelled.
+    try {
+      if (fs.existsSync(wavPath)) fs.unlinkSync(wavPath);
+      const txt = wavPath.replace(/\.wav$/i, '.txt');
+      if (fs.existsSync(txt)) fs.unlinkSync(txt);
+    } catch {}
+    taskRegistry.finish(task.id, status);
+  }
 });
 
 // ========== IPC：TTS 語音合成（依引擎路由）==========
 ipcMain.handle('tts:speak', async (event, text, opts = {}) => {
   const prefs = store.loadPrefs();
   const engineName = opts.engine || prefs.ttsEngine || 'edge';
-  if (engineName === 'elevenlabs') {
-    return await eleven.synthesize(text, {
-      voiceId: opts.voiceId || prefs.elevenVoiceId,
-      model: opts.model || prefs.elevenModel,
-    });
+  const task = taskRegistry.start('tts');
+  let status = 'failed';
+
+  try {
+    const result = engineName === 'elevenlabs'
+      ? await eleven.synthesize(text, {
+          voiceId: opts.voiceId || prefs.elevenVoiceId,
+          model: opts.model || prefs.elevenModel,
+          signal: task.signal,
+        })
+      : await tts.synthesize(text, {
+          voice: opts.voice || prefs.ttsVoice,
+          rate: opts.rate || prefs.ttsRate,
+          signal: task.signal,
+        });
+
+    if (task.signal.aborted || result.cancelled) {
+      status = 'cancelled';
+      return cancellation.cancelledResult(task.id);
+    }
+
+    status = result.ok ? 'completed' : 'failed';
+    return { ...result, requestId: task.id };
+  } catch (error) {
+    if (cancellation.isAbortError(error) || task.signal.aborted) {
+      status = 'cancelled';
+      return cancellation.cancelledResult(task.id);
+    }
+    return { ok: false, requestId: task.id, error: error.message };
+  } finally {
+    taskRegistry.finish(task.id, status);
   }
-  return await tts.synthesize(text, {
-    voice: opts.voice || prefs.ttsVoice,
-    rate: opts.rate || prefs.ttsRate,
-  });
 });
 
 // 列出 ElevenLabs 帳號可用聲音
@@ -266,7 +327,7 @@ ipcMain.handle('tts:list-eleven-voices', async () => await eleven.listVoices());
 
 // ========== IPC：AI 對話（Claw Router agent loop）==========
 ipcMain.handle('ai:chat', async (event, text, opts) => {
-  if (aiChatInFlight) {
+  if (taskRegistry.hasType('ai')) {
     return { ok: false, code: 'AI_BUSY', error: 'AI is already processing another request.' };
   }
 
@@ -288,14 +349,21 @@ ipcMain.handle('ai:chat', async (event, text, opts) => {
     };
   }
 
-  aiChatInFlight = true;
+  const task = taskRegistry.start('ai');
+  let status = 'failed';
   try {
     const result = await engine.chat(text, {
       model,
+      signal: task.signal,
       onProgress: (p) => { try { sender.send('ai:progress', p); } catch {} },
     });
 
-    if (!result.ok) return result;
+    if (task.signal.aborted || result.cancelled) {
+      status = 'cancelled';
+      return cancellation.cancelledResult(task.id);
+    }
+
+    if (!result.ok) return { ...result, requestId: task.id };
 
     const latestPrefs = store.loadPrefs();
     const usage = usageLedger.recordUsage(latestPrefs.usage, {
@@ -305,21 +373,30 @@ ipcMain.handle('ai:chat', async (event, text, opts) => {
     });
     store.saveUsage(usage);
 
+    status = 'completed';
     return {
       ...result,
+      requestId: task.id,
       requestCost: result.cost,
       cost: undefined,
       usageRecorded: true,
       usageSummary: usageLedger.capStatus(usage, latestPrefs.monthlyCapUsd),
     };
+  } catch (error) {
+    if (cancellation.isAbortError(error) || task.signal.aborted) {
+      status = 'cancelled';
+      return cancellation.cancelledResult(task.id);
+    }
+    return { ok: false, requestId: task.id, error: error.message };
   } finally {
-    aiChatInFlight = false;
+    taskRegistry.finish(task.id, status);
   }
 });
 
 ipcMain.handle('ai:reset', async () => {
+  const cancelled = taskRegistry.cancel({ type: 'ai' });
   engine.resetConversation();
-  return { ok: true };
+  return { ok: true, cancelled };
 });
 
 // ========== IPC：Ops Center session 中繼 ==========
@@ -365,7 +442,10 @@ if (!gotLock) {
     });
   });
 
-  app.on('will-quit', () => globalShortcut.unregisterAll());
+  app.on('will-quit', () => {
+    taskRegistry.cancel();
+    globalShortcut.unregisterAll();
+  });
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();
   });

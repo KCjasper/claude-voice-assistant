@@ -2,6 +2,7 @@ const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const setup = require('./setup');
+const cancellation = require('../tasks/cancellation');
 
 const DEFAULT_MODEL = 'medium-q5';
 const MIN_TRANSCRIBE_TIMEOUT_MS = 90 * 1000;
@@ -49,27 +50,30 @@ async function transcribe(wavPath, opts = {}) {
   const model = opts.model || DEFAULT_MODEL;
   const language = opts.language || 'zh';
   const onProgress = opts.onProgress || (() => {});
+  const signal = opts.signal;
   let gpu = opts.gpu !== false;
 
   try {
+    cancellation.throwIfAborted(signal);
     if (!fs.existsSync(wavPath)) return { ok: false, error: `Audio file not found: ${wavPath}` };
 
     onProgress({ phase: 'ensure-binary', gpu });
     let exe;
     try {
-      exe = await setup.ensureBinary(onProgress, gpu);
+      exe = await setup.ensureBinary(onProgress, gpu, signal);
     } catch (e) {
+      if (cancellation.isAbortError(e) || signal?.aborted) throw e;
       if (gpu) {
         gpu = false;
         onProgress({ phase: 'gpu-fallback', error: e.message });
-        exe = await setup.ensureBinary(onProgress, false);
+        exe = await setup.ensureBinary(onProgress, false, signal);
       } else {
         throw e;
       }
     }
 
     onProgress({ phase: 'ensure-model', model });
-    const modelPath = await setup.ensureModel(model, onProgress);
+    const modelPath = await setup.ensureModel(model, onProgress, signal);
 
     onProgress({ phase: 'transcribe', gpu });
     const t0 = Date.now();
@@ -81,16 +85,19 @@ async function transcribe(wavPath, opts = {}) {
         language,
         prompt: opts.prompt,
         timeoutMs,
+        signal,
       });
     } catch (e) {
+      if (cancellation.isAbortError(e) || signal?.aborted) throw e;
       if (gpu) {
         gpu = false;
         onProgress({ phase: 'gpu-fallback', error: e.message });
-        const cpuExe = await setup.ensureBinary(onProgress, false);
+        const cpuExe = await setup.ensureBinary(onProgress, false, signal);
         text = await runWhisper(cpuExe, modelPath, wavPath, {
           language,
           prompt: opts.prompt,
           timeoutMs,
+          signal,
         });
       } else {
         throw e;
@@ -99,11 +106,21 @@ async function transcribe(wavPath, opts = {}) {
 
     return { ok: true, text, ms: Date.now() - t0, gpu };
   } catch (e) {
+    if (cancellation.isAbortError(e) || signal?.aborted) {
+      return { ok: false, code: 'CANCELLED', cancelled: true, error: 'Transcription cancelled.' };
+    }
     return { ok: false, error: e.message };
   }
 }
 
-function runWhisper(exe, modelPath, wavPath, { language, prompt, timeoutMs }) {
+function runWhisper(exe, modelPath, wavPath, {
+  language,
+  prompt,
+  timeoutMs,
+  signal,
+  spawnImpl = spawn,
+}) {
+  cancellation.throwIfAborted(signal);
   return new Promise((resolve, reject) => {
     const args = [
       '-m', modelPath,
@@ -115,7 +132,7 @@ function runWhisper(exe, modelPath, wavPath, { language, prompt, timeoutMs }) {
     ];
     if (prompt) args.push('--prompt', prompt);
 
-    const child = spawn(exe, args, {
+    const child = spawnImpl(exe, args, {
       cwd: path.dirname(exe),
       windowsHide: true,
     });
@@ -123,14 +140,24 @@ function runWhisper(exe, modelPath, wavPath, { language, prompt, timeoutMs }) {
     let stdout = '';
     let stderr = '';
     let settled = false;
+    let timer;
     const tail = (s, n = 800) => s.slice(-n);
     const finish = (fn, value) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
       fn(value);
     };
-    const timer = setTimeout(() => {
+    const onAbort = () => {
+      const error = cancellation.isAbortError(signal.reason)
+        ? signal.reason
+        : cancellation.createAbortError();
+      finish(reject, error);
+      try { child.kill(); } catch {}
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+    timer = setTimeout(() => {
       try { child.kill(); } catch {}
       finish(
         reject,
@@ -172,4 +199,4 @@ function cleanStdout(stdout) {
   return out.join(' ').trim();
 }
 
-module.exports = { transcribe, transcribeTimeoutMs, wavDurationSec };
+module.exports = { transcribe, transcribeTimeoutMs, wavDurationSec, runWhisper };

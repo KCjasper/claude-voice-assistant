@@ -7,6 +7,7 @@ const https = require('https');
 const http = require('http');
 const store = require('../config/store');
 const search = require('./search');
+const cancellation = require('../tasks/cancellation');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..', '..');
 
@@ -141,17 +142,39 @@ function listDirectory(args) {
   return lines.join('\n') || '（空目錄）';
 }
 
-function fetchUrl(args) {
-  return new Promise((resolve) => {
+function fetchUrl(args, { signal } = {}) {
+  cancellation.throwIfAborted(signal);
+  return new Promise((resolve, reject) => {
     let url;
     try { url = new URL(args.url); } catch { return resolve('錯誤：網址格式不正確'); }
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return resolve('錯誤：只支援 http/https');
 
     const lib = url.protocol === 'https:' ? https : http;
-    const req = lib.get(url, { headers: { 'User-Agent': 'VoiceAssistant/0.1' }, timeout: 12000 }, (res) => {
+    let settled = false;
+    let req;
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      signal?.removeEventListener('abort', onAbort);
+      fn(value);
+    };
+    const onAbort = () => {
+      const error = cancellation.isAbortError(signal.reason)
+        ? signal.reason
+        : cancellation.createAbortError();
+      finish(reject, error);
+      try { req?.destroy(error); } catch {}
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+
+    req = lib.get(url, { headers: { 'User-Agent': 'VoiceAssistant/0.1' }, timeout: 12000 }, (res) => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         // 簡單 follow 一次 redirect
-        return resolve(fetchUrl({ url: new URL(res.headers.location, url).href }));
+        res.resume();
+        return finish(
+          resolve,
+          fetchUrl({ url: new URL(res.headers.location, url).href }, { signal })
+        );
       }
       let data = '';
       res.on('data', (c) => { data += c; if (data.length > 200000) req.destroy(); });
@@ -163,6 +186,8 @@ function fetchUrl(args) {
           .replace(/<[^>]+>/g, ' ')
           .replace(/\s+/g, ' ')
           .trim();
+        settled = true;
+        signal?.removeEventListener('abort', onAbort);
         resolve(text.slice(0, 8000) || '（沒有抓到文字內容）');
       });
     });
@@ -172,17 +197,19 @@ function fetchUrl(args) {
 }
 
 // ===== 統一派發 =====
-async function execute(name, args) {
+async function execute(name, args, opts = {}) {
   try {
+    cancellation.throwIfAborted(opts.signal);
     switch (name) {
       case 'read_file': return readFile(args);
       case 'write_file': return writeFile(args);
       case 'list_directory': return listDirectory(args);
-      case 'fetch_url': return await fetchUrl(args);
-      case 'web_search': return await search.webSearch(args.query, args.count || 5);
+      case 'fetch_url': return await fetchUrl(args, opts);
+      case 'web_search': return await search.webSearch(args.query, args.count || 5, opts);
       default: return `錯誤：未知的工具 ${name}`;
     }
   } catch (e) {
+    if (cancellation.isAbortError(e) || opts.signal?.aborted) throw e;
     return `錯誤：${e.message}`;
   }
 }

@@ -6,6 +6,7 @@ const path = require('path');
 const https = require('https');
 const { spawn } = require('child_process');
 const { app } = require('electron');
+const cancellation = require('../tasks/cancellation');
 
 const BIN_DIR = () => path.join(app.getPath('userData'), 'bin');           // CPU 版
 const BIN_DIR_CUDA = () => path.join(app.getPath('userData'), 'bin-cuda'); // GPU 版
@@ -62,7 +63,8 @@ function modelExists(name = 'medium-q5') {
 }
 
 // HTTPS 下載含 follow redirect + progress
-function downloadStream(url, destPath, onProgress, _depth = 0, timeoutMs = 120000) {
+function downloadStream(url, destPath, onProgress, _depth = 0, timeoutMs = 120000, signal) {
+  cancellation.throwIfAborted(signal);
   return new Promise((resolve, reject) => {
     if (_depth > 5) return reject(new Error('Too many redirects'));
     fs.mkdirSync(path.dirname(destPath), { recursive: true });
@@ -78,6 +80,7 @@ function downloadStream(url, destPath, onProgress, _depth = 0, timeoutMs = 12000
     const finish = (fn, value, cleanup = true) => {
       if (settled) return;
       settled = true;
+      signal?.removeEventListener('abort', onAbort);
       if (req) req.destroy();
       if (file) {
         try { file.destroy(); } catch {}
@@ -86,6 +89,13 @@ function downloadStream(url, destPath, onProgress, _depth = 0, timeoutMs = 12000
       fn(value);
     };
     const fail = (e) => finish(reject, e);
+    const onAbort = () => {
+      const error = cancellation.isAbortError(signal.reason)
+        ? signal.reason
+        : cancellation.createAbortError();
+      finish(reject, error);
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
 
     file = fs.createWriteStream(tmp);
     file.on('error', (e) => fail(new Error(`Failed to write download: ${e.message}`)));
@@ -99,7 +109,14 @@ function downloadStream(url, destPath, onProgress, _depth = 0, timeoutMs = 12000
         res.resume();
         finish(
           resolve,
-          downloadStream(new URL(res.headers.location, url).href, destPath, onProgress, _depth + 1, timeoutMs),
+          downloadStream(
+            new URL(res.headers.location, url).href,
+            destPath,
+            onProgress,
+            _depth + 1,
+            timeoutMs,
+            signal
+          ),
           true
         );
         return;
@@ -137,7 +154,8 @@ function downloadStream(url, destPath, onProgress, _depth = 0, timeoutMs = 12000
   });
 }
 
-function extractZip(zipPath, destDir, onProgress, timeoutMs = 10 * 60 * 1000) {
+function extractZip(zipPath, destDir, onProgress, timeoutMs = 10 * 60 * 1000, signal) {
+  cancellation.throwIfAborted(signal);
   return new Promise((resolve, reject) => {
     if (onProgress) onProgress({ stage: 'binary', step: 'extract', tool: 'tar' });
 
@@ -147,13 +165,23 @@ function extractZip(zipPath, destDir, onProgress, timeoutMs = 10 * 60 * 1000) {
 
     let settled = false;
     let stderr = '';
+    let timer;
     const finish = (fn, value) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
       fn(value);
     };
-    const timer = setTimeout(() => {
+    const onAbort = () => {
+      const error = cancellation.isAbortError(signal.reason)
+        ? signal.reason
+        : cancellation.createAbortError();
+      finish(reject, error);
+      try { child.kill(); } catch {}
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+    timer = setTimeout(() => {
       try { child.kill(); } catch {}
       finish(reject, new Error('Whisper binary extraction timed out'));
     }, timeoutMs);
@@ -173,16 +201,23 @@ function extractZip(zipPath, destDir, onProgress, timeoutMs = 10 * 60 * 1000) {
 }
 
 // 透過 releases atom feed + expanded_assets HTML 找下載網址（不走會被限流的 GitHub API）
-async function getWhisperBinaryUrl(gpu) {
+async function getWhisperBinaryUrl(gpu, signal) {
   const H = { 'User-Agent': 'VoiceAssistant/0.1' };
+  cancellation.throwIfAborted(signal);
 
   // 1) 最新版號
-  const atom = await (await fetch(`https://github.com/${REPO}/releases.atom`, { headers: H })).text();
+  const atom = await (await fetch(
+    `https://github.com/${REPO}/releases.atom`,
+    { headers: H, signal }
+  )).text();
   const tag = (atom.match(/releases\/tag\/([^<"]+)/) || [])[1];
   if (!tag) throw new Error('找不到 whisper 版本');
 
   // 2) 該版資產清單
-  const html = await (await fetch(`https://github.com/${REPO}/releases/expanded_assets/${tag}`, { headers: H })).text();
+  const html = await (await fetch(
+    `https://github.com/${REPO}/releases/expanded_assets/${tag}`,
+    { headers: H, signal }
+  )).text();
   const esc = tag.replace(/[.]/g, '\\.');
   const names = [...html.matchAll(new RegExp(`/download/${esc}/([^"]+)`, 'g'))].map((m) => m[1]);
 
@@ -201,23 +236,24 @@ async function getWhisperBinaryUrl(gpu) {
   return { url: `https://github.com/${REPO}/releases/download/${tag}/${asset}`, name: asset, version: tag };
 }
 
-async function ensureBinary(onProgress, gpu = false) {
+async function ensureBinary(onProgress, gpu = false, signal) {
+  cancellation.throwIfAborted(signal);
   const dir = gpu ? BIN_DIR_CUDA() : BIN_DIR();
   if (isReady(gpu)) return findWhisperExe(dir);
 
   if (onProgress) onProgress({ stage: 'binary', step: 'fetch-url', gpu });
-  const { url, name, version } = await getWhisperBinaryUrl(gpu);
+  const { url, name, version } = await getWhisperBinaryUrl(gpu, signal);
 
   if (onProgress) onProgress({ stage: 'binary', step: 'download', name, version, gpu });
   fs.mkdirSync(dir, { recursive: true });
   const zipPath = path.join(dir, name);
   await downloadStream(url, zipPath, (p) => {
     if (onProgress) onProgress({ stage: 'binary', step: 'download', ...p, version, gpu });
-  });
+  }, 0, 120000, signal);
 
   await extractZip(zipPath, dir, (p) => {
     if (onProgress) onProgress({ ...p, version, gpu });
-  });
+  }, 10 * 60 * 1000, signal);
 
   const exe = findWhisperExe(dir);
   if (!exe) throw new Error('解壓後找不到 whisper-cli.exe');
@@ -225,7 +261,8 @@ async function ensureBinary(onProgress, gpu = false) {
   return exe;
 }
 
-async function ensureModel(name = 'medium-q5', onProgress) {
+async function ensureModel(name = 'medium-q5', onProgress, signal) {
+  cancellation.throwIfAborted(signal);
   if (modelExists(name)) return modelPath(name);
   if (!MODEL_URLS[name]) throw new Error(`未知的模型：${name}`);
 
@@ -233,7 +270,7 @@ async function ensureModel(name = 'medium-q5', onProgress) {
   if (onProgress) onProgress({ stage: 'model', step: 'download', name });
   await downloadStream(MODEL_URLS[name], modelPath(name), (p) => {
     if (onProgress) onProgress({ stage: 'model', step: 'download', name, ...p });
-  });
+  }, 0, 120000, signal);
   return modelPath(name);
 }
 

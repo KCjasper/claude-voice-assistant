@@ -48,6 +48,15 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('ai:progress', (_e, p) => callback(p));
   },
 
+  // ===== Task cancellation =====
+  cancelTask: (target) => ipcRenderer.invoke('task:cancel', target || {}),
+  cancelAi: (requestId) => ipcRenderer.invoke('ai:cancel', requestId),
+  cancelStt: (requestId) => ipcRenderer.invoke('stt:cancel', requestId),
+  cancelTts: (requestId) => ipcRenderer.invoke('tts:cancel', requestId),
+  onTaskState: (callback) => {
+    ipcRenderer.on('task:state', (_e, state) => callback(state));
+  },
+
   // ===== Ops Center session 同步 =====
   pushSession: (snapshot) => ipcRenderer.send('session:update', snapshot),
   getSession: () => ipcRenderer.invoke('session:get'),
