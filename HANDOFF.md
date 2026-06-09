@@ -1,10 +1,19 @@
 # HANDOFF · 接手指南（給新 session / 新 AI 同事）
 
 > 這份檔案是「記憶外化」——讓新對話一開場讀完就能接手，不必重看舊對話。
-> 搭配 `README.md`（架構/進度）一起看。最後更新：2026-06-09。
+> 搭配 `README.md`（架構/進度）一起看。最後更新：2026-06-09（對應 commit 在 `git log` 最上面）。
+
+## 📍 專案位置（最重要，先確認）
+- **本機路徑**：`D:\C槽使用者資料\Desktop\Claude-workspace\projects\voice-assistant`
+  - git-bash 寫法：`/d/C槽使用者資料/Desktop/Claude-workspace/projects/voice-assistant`
+  - 它是 Cowork 工作區 `Claude-workspace` 底下的 `projects/voice-assistant/`
+- **app 程式在** `app/` 子資料夾（`cd app` 才能 `npm start` / `npm test`）
+- GitHub：https://github.com/KCjasper/claude-voice-assistant（公開）
+- 若本機沒有這個資料夾（全新環境）：`git clone` 上面網址，再 `cd app && npm install`
+  （Whisper 執行檔與模型是首次執行時自動下載到 userData，不在 repo 內）
 
 ## 開場 60 秒要做的事
-1. 讀這份 `HANDOFF.md` + `README.md`
+1. **`cd` 到上面的本機路徑**，讀這份 `HANDOFF.md` + `README.md`
 2. `git fetch && git log --oneline -10`（看最近改了什麼）
 3. `gh issue list --repo KCjasper/claude-voice-assistant`（看待辦與責任歸屬）
    - gh 已安裝且已登入（`C:\Program Files\GitHub CLI\gh.exe`，帳號 KCjasper）
@@ -43,7 +52,16 @@
 ## 我的待辦（前端）
 - **#20** 工作資料夾切換 UI — 等後端 #18/#19 的 IPC 先好
 - **#23 / #24** 手機遠端的網頁客戶端 + 桌面管理 UI — 等後端 #21/#22 伺服器先好
-- **#14 的 Ctrl+Q 中斷** — 後端 #8 取消契約已就緒，現在可接（原本因無契約而暫緩）
+- （#7、#14 已完成關閉；#8 後端取消機制已完成）
+
+## ⚠️ 已知未提交 / 待確認
+- `app/fullscreen.js` 有一段**未提交**的 Ctrl+Q 中斷處理，但呼叫的是 `window.api.cancel()`——
+  **preload 沒有這個方法**（正確的是 `cancelAi(requestId)` / `cancelTask(target)` / `cancelStt` / `cancelTts`）。
+  要讓 Ctrl+Q 真的能中斷，需改成 `window.api.cancelAi()`（或 `cancelTask()`）再 commit。
+
+## 取消機制（#8，後端已完成）
+- preload 暴露：`cancelTask(target)`、`cancelAi(requestId)`、`cancelStt(requestId)`、`cancelTts(requestId)`
+- 對應後端 IPC：`task:cancel` / `ai:cancel` / `stt:cancel` / `tts:cancel`；signal 已接進 STT/TTS/工具
 
 ## KC（使用者）偏好
 - 用**繁體中文**溝通；不太懂技術，請白話解釋、不要丟一堆術語。
