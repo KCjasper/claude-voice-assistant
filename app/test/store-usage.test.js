@@ -43,6 +43,18 @@ test('normal preference saves cannot overwrite backend usage', () => {
   assert.equal(prefs.usage.days['2026-06-09'].usd, 1);
 });
 
+test('normal preference saves cannot persist wake-word access keys', () => {
+  store.savePrefs({
+    wakeWordEnabled: true,
+    wakeWordAccessKey: 'plaintext-one',
+    picovoiceAccessKey: 'plaintext-two',
+  });
+
+  const raw = fs.readFileSync(path.join(configDir, 'prefs.json'), 'utf8');
+  assert.doesNotMatch(raw, /plaintext-one|plaintext-two/);
+  assert.equal(store.loadPrefs().wakeWordEnabled, true);
+});
+
 test('usage writes are atomic and leave no temporary file behind', () => {
   store.saveUsage({ days: {}, months: { '2026-06': { usd: 2 } } });
 

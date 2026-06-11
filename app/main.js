@@ -25,6 +25,12 @@ const { BudgetManager } = require('./src/usage/budget-manager');
 const cancellation = require('./src/tasks/cancellation');
 const interruption = require('./src/tasks/interrupt');
 const { SessionManager } = require('./src/session/session-manager');
+const { WakeWordService } = require('./src/wake-word/wake-word-service');
+const {
+  ACCESS_KEY_SECRET,
+  registerWakeWordIpc,
+  sanitizeConfig: sanitizeWakeWordConfig,
+} = require('./src/wake-word/wake-word-ipc');
 
 const FLOATING_W = 340, FLOATING_H = 520, EDGE = 24;
 const FULLSCREEN_PADDING = 0;
@@ -62,6 +68,25 @@ const hotkeyManager = new HotkeyManager({
   getWindows: () => BrowserWindow.getAllWindows(),
   onTrigger: () => {
     if (!floatingWindow) return;
+    if (!floatingWindow.isVisible()) floatingWindow.show();
+    floatingWindow.webContents.send('hotkey:toggle-record');
+  },
+});
+const wakeWordService = new WakeWordService({
+  getConfig: () => store.loadPrefs(),
+  getAccessKey: () => store.loadSecret(ACCESS_KEY_SECRET),
+  onState: (state) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (window.isDestroyed()) continue;
+      try { window.webContents.send('wake-word:state', state); } catch {}
+    }
+  },
+  onWake: (detection) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (window.isDestroyed()) continue;
+      try { window.webContents.send('wake-word:detected', detection); } catch {}
+    }
+    if (!floatingWindow || floatingWindow.isDestroyed()) return;
     if (!floatingWindow.isVisible()) floatingWindow.show();
     floatingWindow.webContents.send('hotkey:toggle-record');
   },
@@ -196,11 +221,30 @@ ipcMain.handle('config:get-prefs', async () => {
 });
 
 ipcMain.handle('config:save-prefs', async (event, partial) => {
-  return savePreferencesWithHotkey({
-    partial,
+  let validatedPartial = partial;
+  try {
+    if (partial && Object.keys(partial).some((key) => key.startsWith('wakeWord'))) {
+      validatedPartial = {
+        ...partial,
+        ...sanitizeWakeWordConfig(partial),
+      };
+    }
+  } catch (error) {
+    return { ok: false, code: 'WAKE_CONFIG_INVALID', error: error.message };
+  }
+  const result = savePreferencesWithHotkey({
+    partial: validatedPartial,
     manager: hotkeyManager,
     store,
   });
+  if (result?.ok === false) return result;
+  if (
+    validatedPartial
+    && Object.keys(validatedPartial).some((key) => key.startsWith('wakeWord'))
+  ) {
+    wakeWordService.configure(result);
+  }
+  return result;
 });
 
 workspaceIpc.registerWorkspaceIpc({
@@ -210,6 +254,12 @@ workspaceIpc.registerWorkspaceIpc({
   store,
 });
 registerHotkeyIpc({ ipcMain, manager: hotkeyManager, store });
+registerWakeWordIpc({
+  ipcMain,
+  dialog,
+  store,
+  service: wakeWordService,
+});
 
 // ========== IPC：API Key 加密讀寫 ==========
 ipcMain.handle('config:save-api-key', async (event, key) => {
@@ -611,6 +661,7 @@ ipcMain.handle('ai:reset', async () => {
 });
 
 ipcMain.on('session:update', (event, snapshot) => {
+  wakeWordService.setActivity(snapshot?.state);
   updateSession('applyRendererSnapshot', snapshot);
 });
 ipcMain.handle('session:get', () => sessionManager?.snapshot() || { state: 'idle', convo: [] });
@@ -649,11 +700,13 @@ if (!gotLock) {
     if (!hotkey.ok) {
       hotkeyManager.markStartupFailure(accelerator, hotkey.error);
     }
+    wakeWordService.configure(store.loadPrefs());
   });
 
   app.on('will-quit', () => {
     taskRegistry.cancel();
     hotkeyManager.stop();
+    wakeWordService.stop();
   });
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();

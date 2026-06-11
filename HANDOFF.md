@@ -122,3 +122,10 @@ https://github.com/KCjasper/claude-voice-assistant（公開）
 - Ops Center snapshots are rebuilt from backend state. Renderer updates may only supplement idle/listening/speaking display state and cannot inject conversation history.
 - Active work is marked interrupted after restart; reset clears both engine history and persisted session state.
 - Added restart, migration-compatible persistence, retention, sanitization, multi-window, renderer-injection, and engine hydration tests. No frontend UI files were changed.
+
+## Backend #12 - offline Hey Claude wake-word service (2026-06-11)
+- Added a main-process Porcupine + PvRecorder service with local in-memory frame processing, device selection, sensitivity, lifecycle cleanup, and push-to-talk fallback states.
+- Custom `Hey Claude` uses a platform-compatible `.ppn` file; the Picovoice AccessKey is stored through the encrypted secret store and is never placed in preferences or renderer state.
+- Existing renderer session states pause wake capture during interaction/recording/playback and resume it when idle, preventing microphone and feedback conflicts without frontend changes.
+- Added IPC for state, detection, device listing, configuration, encrypted AccessKey setup, keyword selection, and retry.
+- Added service tests for detection, pause/resume, validation, device failures, capture failures, cleanup, and preload contracts. Audio frames are not persisted or uploaded.

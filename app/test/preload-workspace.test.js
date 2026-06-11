@@ -55,6 +55,15 @@ test('preload exposes the documented workspace contract', async () => {
   assert.equal(typeof exposedApi.setPttHotkey, 'function');
   assert.equal(typeof exposedApi.onPttHotkeyChanged, 'function');
   assert.equal(typeof exposedApi.listModels, 'function');
+  assert.equal(typeof exposedApi.getWakeWordState, 'function');
+  assert.equal(typeof exposedApi.listWakeWordDevices, 'function');
+  assert.equal(typeof exposedApi.setWakeWordConfig, 'function');
+  assert.equal(typeof exposedApi.setWakeWordAccessKey, 'function');
+  assert.equal(typeof exposedApi.clearWakeWordAccessKey, 'function');
+  assert.equal(typeof exposedApi.chooseWakeWordKeyword, 'function');
+  assert.equal(typeof exposedApi.retryWakeWord, 'function');
+  assert.equal(typeof exposedApi.onWakeWordState, 'function');
+  assert.equal(typeof exposedApi.onWakeWordDetected, 'function');
 
   await exposedApi.getWorkspace();
   await exposedApi.chooseWorkspace();
@@ -65,6 +74,13 @@ test('preload exposes the documented workspace contract', async () => {
   await exposedApi.getPttHotkey();
   await exposedApi.setPttHotkey('Control+Space');
   await exposedApi.listModels({ force: true });
+  await exposedApi.getWakeWordState();
+  await exposedApi.listWakeWordDevices();
+  await exposedApi.setWakeWordConfig({ wakeWordEnabled: true });
+  await exposedApi.setWakeWordAccessKey('secret');
+  await exposedApi.clearWakeWordAccessKey();
+  await exposedApi.chooseWakeWordKeyword();
+  await exposedApi.retryWakeWord();
   assert.deepEqual(invokes, [
     ['workspace:get'],
     ['workspace:choose'],
@@ -75,6 +91,13 @@ test('preload exposes the documented workspace contract', async () => {
     ['hotkey:get'],
     ['hotkey:set', 'Control+Space'],
     ['ai:list-models', { force: true }],
+    ['wake-word:get'],
+    ['wake-word:list-devices'],
+    ['wake-word:set-config', { wakeWordEnabled: true }],
+    ['wake-word:set-access-key', 'secret'],
+    ['wake-word:clear-access-key'],
+    ['wake-word:choose-keyword'],
+    ['wake-word:retry'],
   ]);
 
   const received = [];

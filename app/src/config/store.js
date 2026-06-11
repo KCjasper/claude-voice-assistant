@@ -17,6 +17,11 @@ const DEFAULT_PREFS = {
   ttsVoice: 'zh-TW-HsiaoChenNeural',
   ttsRate: 1.0,
   pttHotkey: 'Control+Space',
+  wakeWordEnabled: false,
+  wakeWordSensitivity: 0.55,
+  wakeWordDeviceIndex: -1,
+  wakeWordKeywordPath: '',
+  wakeWordModelPath: '',
   monthlyCapUsd: 50,
   maxAiRequestUsd: 1,
   maxAiOutputTokens: 2048,
@@ -123,6 +128,8 @@ function savePrefs(partial) {
   delete editable.usage;
   delete editable.workspaceDir;
   delete editable.approvedFolders;
+  delete editable.wakeWordAccessKey;
+  delete editable.picovoiceAccessKey;
   const next = { ...cur, ...editable };
   writePrefs(next);
   return next;

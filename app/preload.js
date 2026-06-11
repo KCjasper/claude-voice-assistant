@@ -90,4 +90,23 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('hotkey:changed', listener);
     return () => ipcRenderer.removeListener('hotkey:changed', listener);
   },
+
+  // ===== Offline wake word =====
+  getWakeWordState: () => ipcRenderer.invoke('wake-word:get'),
+  listWakeWordDevices: () => ipcRenderer.invoke('wake-word:list-devices'),
+  setWakeWordConfig: (partial) => ipcRenderer.invoke('wake-word:set-config', partial),
+  setWakeWordAccessKey: (accessKey) => ipcRenderer.invoke('wake-word:set-access-key', accessKey),
+  clearWakeWordAccessKey: () => ipcRenderer.invoke('wake-word:clear-access-key'),
+  chooseWakeWordKeyword: () => ipcRenderer.invoke('wake-word:choose-keyword'),
+  retryWakeWord: () => ipcRenderer.invoke('wake-word:retry'),
+  onWakeWordState: (callback) => {
+    const listener = (_event, state) => callback(state);
+    ipcRenderer.on('wake-word:state', listener);
+    return () => ipcRenderer.removeListener('wake-word:state', listener);
+  },
+  onWakeWordDetected: (callback) => {
+    const listener = (_event, detection) => callback(detection);
+    ipcRenderer.on('wake-word:detected', listener);
+    return () => ipcRenderer.removeListener('wake-word:detected', listener);
+  },
 });
