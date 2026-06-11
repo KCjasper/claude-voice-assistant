@@ -759,7 +759,68 @@ async function initRemote() {
   }
 }
 
+// ============================================================
+// MODEL · 動態模型清單 (#11)
+// 後端契約：listModels({force?}) -> { ok, models:[{id, ownedBy, priceKnown, selectableUnderCap}], cached, ... }
+// 後端不存在 / 抓取失敗時，保留 HTML 內建的寫死清單當 fallback。
+// ============================================================
+const mdlEls = { select: els.defaultModel, refresh: $('btnRefreshModels'), status: $('modelListStatus') };
+const mdlApiReady = !!(window.api && typeof window.api.listModels === 'function');
+
+function populateModels(models, keep) {
+  if (!Array.isArray(models) || !models.length) return false;
+  const current = keep || mdlEls.select.value;
+  mdlEls.select.innerHTML = '';
+  const groups = {};
+  models.forEach((m) => { (groups[m.ownedBy || 'other'] = groups[m.ownedBy || 'other'] || []).push(m); });
+  Object.keys(groups).forEach((g) => {
+    const og = document.createElement('optgroup');
+    og.label = g;
+    groups[g].forEach((m) => {
+      const o = document.createElement('option');
+      o.value = m.id;
+      o.textContent = m.id + (m.priceKnown ? '' : '（無定價）');
+      if (!m.selectableUnderCap) o.disabled = true;
+      og.appendChild(o);
+    });
+    mdlEls.select.appendChild(og);
+  });
+  if (current && models.some((m) => m.id === current)) mdlEls.select.value = current;
+  return true;
+}
+
+async function refreshModels(force, keep) {
+  if (!mdlApiReady) { mdlEls.status.textContent = ''; return; }
+  mdlEls.status.textContent = '· 載入中⋯';
+  const want = keep || mdlEls.select.value;
+  try {
+    const res = await window.api.listModels({ force: !!force });
+    if (!res || !res.ok || !Array.isArray(res.models) || !res.models.length) {
+      mdlEls.status.textContent = force ? '· 載入失敗，沿用內建清單' : '';
+      return;
+    }
+    populateModels(res.models, want);
+    mdlEls.status.textContent = `· ${res.models.length} 個可用${res.cached ? '（快取）' : ''}`;
+  } catch (e) {
+    mdlEls.status.textContent = force ? '· 載入失敗：' + e.message : '';
+  }
+}
+
+if (mdlEls.refresh) {
+  if (!mdlApiReady) { mdlEls.refresh.disabled = true; mdlEls.refresh.title = '後端未提供模型清單'; }
+  mdlEls.refresh.addEventListener('click', () => refreshModels(true));
+}
+
+async function initModels() {
+  if (!mdlApiReady) return;
+  try {
+    const prefs = await window.api.getPrefs();
+    await refreshModels(false, prefs.defaultModel);
+  } catch {}
+}
+
 // 初始化
 loadAll();
 initWorkspace();
 initRemote();
+initModels();

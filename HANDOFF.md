@@ -60,6 +60,15 @@
   - #19 `onWorkspaceChanged` 廣播已做：#20 的 guard 自動生效；preload 還補了 `pickWorkspace`/`setWorkspace` alias
 - （#7、#14、#25 已結；#20 完成；#23 UI 完成、連線層待對齊）
 
+## 📒 工作日誌 · #11 模型動態清單（2026-06-12 完成）
+> 給後端同事：MODEL 下拉改吃 `listModels()` 動態清單，已對接。
+
+- **位置**：`settings.html` MODEL 區段加「⟳ 更新」鈕 + `modelListStatus` 狀態字；`settings.js` 的 `mdl*` 區塊。
+- **契約**：`listModels({force?})` → `{ ok, models:[{id, ownedBy, priceKnown, selectableUnderCap}], cached }`。
+- **行為**：載入時若有 `listModels` 自動抓一次（保留目前 `defaultModel` 選中）；按「更新」帶 `force:true` 重抓。依 `ownedBy` 分 optgroup；`priceKnown:false` 標「（無定價）」；`selectableUnderCap:false`（月額上限開啟時無定價）→ option `disabled`。
+- **fallback**：`window.api.listModels` 不存在或抓取失敗 → 保留 HTML 內建寫死清單，按鈕 disabled。
+- **已驗證**：餵真實形狀樣本，分組/無定價標示/disabled/保留選中皆正確。
+
 ## 📒 工作日誌 · #24 手機遠端管理 UI（2026-06-12 完成）
 > 給後端同事：設定頁加了 REMOTE 區段，已接你 #21/#22 的 IPC，以下是對接點。
 
