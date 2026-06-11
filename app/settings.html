@@ -238,6 +238,54 @@
       <div class="hint" id="searchHint" style="margin-top:6px;"></div>
     </div>
 
+    <!-- 區段：手機遠端 (#24) -->
+    <div class="section">
+      <div class="section-title">REMOTE · 手機遠端</div>
+
+      <div class="field">
+        <label class="checkbox-label">
+          <input type="checkbox" id="remoteEnable">
+          <span>啟用手機遠端（用手機網頁操作這台助理）</span>
+        </label>
+        <div class="hint">會在區網開一個小伺服器，手機掃 QR 或輸入配對碼即可連上。助理仍跑在這台電腦。</div>
+      </div>
+
+      <div id="remoteActiveBlock" style="display:none;">
+        <div class="remote-grid">
+          <div class="remote-qr"><img id="remoteQr" alt="配對 QR Code"></div>
+          <div class="remote-meta">
+            <div class="field">
+              <label>連線網址 <span class="hint">手機與電腦要在同一個 Wi-Fi</span></label>
+              <div class="static-value" id="remoteUrl">—</div>
+            </div>
+            <div class="field">
+              <label>一次性配對碼 <span class="hint" id="remoteTokenState"></span></label>
+              <div class="key-row">
+                <div class="static-value" id="remoteToken" style="flex:1;word-break:break-all;">—</div>
+                <button class="icon-btn" id="remoteCopyToken" title="複製配對碼">⧉</button>
+              </div>
+            </div>
+            <div class="actions-row">
+              <button class="btn-secondary" id="remoteRotate">重新產生配對碼</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="field" style="margin-top:14px;">
+          <label class="checkbox-label">
+            <input type="checkbox" id="remoteTunnelEnable">
+            <span>🌐 開放對外連線（離開家裡網路也能用）</span>
+          </label>
+          <div class="hint">透過 Cloudflare 暫時把助理公開到網際網路。⚠ 等於把「能讀寫檔案的助理」開到外網，用完請務必關閉。需先安裝 cloudflared。</div>
+          <div class="static-value" id="remotePublicUrl" style="display:none;margin-top:6px;word-break:break-all;">—</div>
+        </div>
+
+        <div class="test-result" id="remoteWarn"></div>
+      </div>
+
+      <div class="test-result" id="remoteNote"></div>
+    </div>
+
     <!-- 區段 4：用量上限 -->
     <div class="section">
       <div class="section-title">SPENDING</div>

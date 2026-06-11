@@ -319,6 +319,30 @@ html,body{
   color:#fcd34d;
 }
 
+/* ===== 手機遠端 (#24) ===== */
+.remote-grid{
+  display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:start;
+}
+.remote-qr{
+  width:140px;height:140px;flex:none;
+  background:#fff;border-radius:12px;
+  padding:8px;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 0 20px -6px rgba(96,165,250,0.5);
+}
+.remote-qr img{width:100%;height:100%;image-rendering:pixelated;}
+.remote-meta{min-width:0;}
+.remote-meta .field{margin-bottom:10px;}
+.remote-meta .static-value{
+  font-family:"SF Mono","JetBrains Mono",Consolas,monospace;
+  font-size:11.5px;color:#93c5fd;
+}
+#remotePublicUrl{color:#fcd34d;font-family:"SF Mono",Consolas,monospace;font-size:11px;}
+@media (max-width:420px){
+  .remote-grid{grid-template-columns:1fr;justify-items:center;}
+  .remote-meta{width:100%;}
+}
+
 /* ===== 用量小卡 ===== */
 .field-static{
   display:grid;grid-template-columns:1fr 1fr;gap:10px;

@@ -52,13 +52,24 @@
 ## 我的待辦（前端）— 2026-06-12 更新
 - **#23 手機網頁客戶端 — ✅ 完成（已對齊協定 v1）**：客戶端在 **`app/mobile/`**（後端 server serve 此路徑）。詳見下方工作日誌。
   - ⚠️ 舊版 `mobile-client/`（假定協定）**已棄用**，被 `app/mobile/` 取代，待 KC 確認後可刪。
-- **#24 手機遠端管理 UI — 進行中**：後端 #21/#22 完成，preload 已有全套 IPC（`getRemoteStatus`/`getRemoteAccess`/`startRemote`/`stopRemote`/`rotateRemoteToken`/`startRemoteTunnel`/`stopRemoteTunnel`/`getRemoteProtocol`/`onRemoteState`/`onRemoteTunnelState`）。`remote:get-access` 回 LAN URL + fragment 配對連結 + QR PNG dataURL，直接能畫。
+- **#24 手機遠端管理 UI — ✅ 完成**：設定頁 REMOTE 區段，已接 #21/#22 真實 IPC。詳見下方工作日誌。
 - **新解鎖的前端機會**（後端 2026-06-11 一波交付）：
   - #10 熱鍵已可設定：`getPttHotkey`/`setPttHotkey`/`onPttHotkeyChanged` — 設定頁那行「暫時不可改」可以做成真 UI 了
   - #11 模型目錄：`listModels()` — MODEL 下拉可改吃動態清單
   - #12 喚醒詞服務：`wake-word:*` 一整組 IPC — 設定頁可加 Hey Claude 區段
   - #19 `onWorkspaceChanged` 廣播已做：#20 的 guard 自動生效；preload 還補了 `pickWorkspace`/`setWorkspace` alias
 - （#7、#14、#25 已結；#20 完成；#23 UI 完成、連線層待對齊）
+
+## 📒 工作日誌 · #24 手機遠端管理 UI（2026-06-12 完成）
+> 給後端同事：設定頁加了 REMOTE 區段，已接你 #21/#22 的 IPC，以下是對接點。
+
+- **位置**：`settings.html` 的 **REMOTE** 區段（WEB SEARCH 與 SPENDING 之間）+ `settings.js` 的 `rm*` 區塊 + `settings.css` 的 `.remote-*`。
+- **用到的 IPC**（皆照你 preload 的）：`getRemoteStatus` / `getRemoteAccess` / `startRemote({})` / `stopRemote` / `rotateRemoteToken` / `startRemoteTunnel({acknowledgeRisk:true})` / `stopRemoteTunnel` / `onRemoteState` / `onRemoteTunnelState`。
+- **渲染**：吃 `getRemoteAccess` 回的 `lan[].qrDataUrl`（直接塞 img）、`lan[].baseUrl`、`server.pairingToken`、`server.pairingConsumed`、`tunnel.status/publicUrl`、`warnings`。
+- **互動**：開關啟用/停用伺服器；複製配對碼；重新產生配對碼；對外通道開關（開啟前 confirm 風險警告，帶 `acknowledgeRisk:true`）；`onRemoteState`/`onRemoteTunnelState` 廣播時自動重抓 access。
+- **錯誤處理**：tunnel 啟動回 `REMOTE_TUNNEL_BINARY_MISSING` 時提示「找不到 cloudflared，請先安裝」。
+- **已驗證**：mock 模式（瀏覽器預覽，無 window.api 時走假資料）驗證開關/QR/網址/配對碼/重新產生 UI 正常。真實 app 內 `window.api.getRemoteStatus` 存在即走真實 IPC。
+- **優雅降級**：`window.api.getRemoteStatus` 不存在時走 mock 並顯示「後端遠端服務未連上」。
 
 ## 📒 工作日誌 · #23 手機客戶端對齊協定 v1（2026-06-12 完成）
 > 給後端同事：客戶端已照你的 `app/src/remote/PROTOCOL.md` 完整對齊，以下是我這邊的實作重點。

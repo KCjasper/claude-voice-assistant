@@ -579,6 +579,187 @@ async function initWorkspace() {
   }
 }
 
+// ============================================================
+// REMOTE · 手機遠端 (#24)
+// 後端契約（#21/#22 已接 preload）：
+//   getRemoteStatus()  -> { ok, running, port, clients, pairingToken, pairingConsumed, pairingExpiresAt, ... }
+//   getRemoteAccess()  -> { ok, server, lan:[{baseUrl,pairingUrl,qrDataUrl,address,interface}], tunnel:{status,publicUrl}, public, warnings }
+//   startRemote({port?}) / stopRemote() / rotateRemoteToken() -> { ok, ...state }
+//   startRemoteTunnel({acknowledgeRisk}) / stopRemoteTunnel()  -> { ok, status, publicUrl, ... }
+//   onRemoteState(cb) / onRemoteTunnelState(cb)               -> 廣播
+// 後端方法不存在時走 mock（瀏覽器預覽用）。
+// ============================================================
+const rmEls = {
+  enable: $('remoteEnable'),
+  block: $('remoteActiveBlock'),
+  qr: $('remoteQr'),
+  url: $('remoteUrl'),
+  token: $('remoteToken'),
+  tokenState: $('remoteTokenState'),
+  copyToken: $('remoteCopyToken'),
+  rotate: $('remoteRotate'),
+  tunnelEnable: $('remoteTunnelEnable'),
+  publicUrl: $('remotePublicUrl'),
+  warn: $('remoteWarn'),
+  note: $('remoteNote'),
+};
+const rmApiReady = !!(window.api && typeof window.api.getRemoteStatus === 'function');
+
+// 預覽用假 QR（純前端 SVG，不是真的可掃）
+const MOCK_QR = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120"><rect width="120" height="120" fill="#fff"/>'
+  + '<g fill="#000"><rect x="8" y="8" width="28" height="28"/><rect x="84" y="8" width="28" height="28"/><rect x="8" y="84" width="28" height="28"/>'
+  + '<rect x="48" y="16" width="10" height="10"/><rect x="64" y="32" width="10" height="10"/><rect x="48" y="56" width="12" height="12"/>'
+  + '<rect x="80" y="64" width="10" height="10"/><rect x="96" y="84" width="10" height="10"/><rect x="64" y="96" width="10" height="10"/></g></svg>'
+);
+let rmMock = { running: false, token: 'demo-PAIR-7f3a91', tunnel: false };
+
+function rmNote(kind, msg) {
+  if (!msg) { rmEls.note.className = 'test-result'; rmEls.note.textContent = ''; return; }
+  rmEls.note.className = `test-result show ${kind || 'ok'}`;
+  rmEls.note.textContent = msg;
+}
+
+async function rmGetStatus() {
+  if (rmApiReady) return await window.api.getRemoteStatus();
+  return { ok: true, running: rmMock.running };
+}
+async function rmGetAccess() {
+  if (rmApiReady) return await window.api.getRemoteAccess();
+  // mock
+  if (!rmMock.running) return { ok: true, server: { running: false }, lan: [], tunnel: { status: 'stopped', publicUrl: null }, public: null, warnings: [] };
+  return {
+    ok: true,
+    server: { running: true, port: 8787, pairingToken: rmMock.token, pairingConsumed: false },
+    lan: [{ baseUrl: 'http://192.168.0.12:8787/', pairingUrl: 'http://192.168.0.12:8787/#token=' + rmMock.token, qrDataUrl: MOCK_QR, address: '192.168.0.12', interface: 'Wi-Fi' }],
+    tunnel: { status: rmMock.tunnel ? 'running' : 'stopped', publicUrl: rmMock.tunnel ? 'https://demo-xyz.trycloudflare.com' : null },
+    public: rmMock.tunnel ? { baseUrl: 'https://demo-xyz.trycloudflare.com', pairingUrl: 'https://demo-xyz.trycloudflare.com/#token=' + rmMock.token, qrDataUrl: MOCK_QR } : null,
+    warnings: rmMock.tunnel ? ['（示範）對外網址已公開，用完請關閉通道。'] : [],
+  };
+}
+
+function renderRemoteAccess(access) {
+  const server = access.server || {};
+  const lan = access.lan || [];
+  const running = !!server.running;
+  rmEls.block.style.display = running ? '' : 'none';
+  if (!running) return;
+
+  // QR + 網址（取第一個 LAN 介面；多介面就列出）
+  const primary = lan[0];
+  if (primary && primary.qrDataUrl) { rmEls.qr.src = primary.qrDataUrl; rmEls.qr.style.visibility = 'visible'; }
+  else rmEls.qr.style.visibility = 'hidden';
+  rmEls.url.textContent = lan.length ? lan.map((l) => l.baseUrl).join('\n') : '（找不到區網位址，請確認已連上 Wi-Fi）';
+
+  // 配對碼
+  const token = server.pairingToken || '—';
+  rmEls.token.textContent = token;
+  rmEls.token.dataset.token = token;
+  rmEls.tokenState.textContent = server.pairingConsumed ? '· 已被使用，重新產生才能再配對' : '· 有效約 10 分鐘';
+
+  // 對外通道
+  const tunnel = access.tunnel || {};
+  const isTunnel = tunnel.status === 'running' && tunnel.publicUrl;
+  rmEls.tunnelEnable.checked = !!isTunnel;
+  rmEls.publicUrl.style.display = isTunnel ? '' : 'none';
+  if (isTunnel) rmEls.publicUrl.textContent = '對外網址：' + tunnel.publicUrl;
+
+  // 警告
+  const warnings = access.warnings || [];
+  if (warnings.length) { rmEls.warn.className = 'test-result show warn'; rmEls.warn.textContent = '⚠ ' + warnings.join('\n'); }
+  else { rmEls.warn.className = 'test-result'; rmEls.warn.textContent = ''; }
+}
+
+async function refreshRemoteAccess() {
+  try { renderRemoteAccess(await rmGetAccess()); }
+  catch (e) { rmNote('err', '讀取遠端資訊失敗：' + e.message); }
+}
+
+rmEls.enable.addEventListener('change', async () => {
+  const on = rmEls.enable.checked;
+  rmEls.enable.disabled = true;
+  try {
+    if (on) {
+      const res = rmApiReady ? await window.api.startRemote({}) : (rmMock.running = true, { ok: true });
+      if (!res.ok) { rmEls.enable.checked = false; rmNote('err', res.error || '啟動失敗'); return; }
+      rmNote('ok', '✓ 手機遠端已開啟，用手機掃下方 QR 連上。');
+      await refreshRemoteAccess();
+    } else {
+      if (rmApiReady) await window.api.stopRemote(); else { rmMock.running = false; rmMock.tunnel = false; }
+      rmEls.block.style.display = 'none';
+      rmNote('', '');
+    }
+  } finally { rmEls.enable.disabled = false; }
+});
+
+rmEls.rotate.addEventListener('click', async () => {
+  rmEls.rotate.disabled = true;
+  try {
+    if (rmApiReady) {
+      const res = await window.api.rotateRemoteToken();
+      if (!res.ok) { rmNote('err', res.error || '重新產生失敗'); return; }
+    } else {
+      rmMock.token = 'demo-PAIR-' + Math.random().toString(16).slice(2, 8);
+    }
+    await refreshRemoteAccess();
+    rmNote('ok', '已產生新配對碼，舊的即失效（已連的手機需重新配對）。');
+  } finally { rmEls.rotate.disabled = false; }
+});
+
+rmEls.copyToken.addEventListener('click', async () => {
+  const token = rmEls.token.dataset.token || rmEls.token.textContent;
+  if (!token || token === '—') return;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) await navigator.clipboard.writeText(token);
+    else { const ta = document.createElement('textarea'); ta.value = token; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+    rmNote('ok', '配對碼已複製。');
+  } catch { rmNote('err', '複製失敗，請手動選取。'); }
+});
+
+rmEls.tunnelEnable.addEventListener('change', async () => {
+  const on = rmEls.tunnelEnable.checked;
+  if (on) {
+    if (!confirm('開放對外連線會把這台「能讀寫檔案的助理」透過 Cloudflare 公開到網際網路。\n配對碼務必保密，用完請關閉。\n\n確定要開啟嗎？')) {
+      rmEls.tunnelEnable.checked = false; return;
+    }
+    rmEls.tunnelEnable.disabled = true;
+    try {
+      const res = rmApiReady ? await window.api.startRemoteTunnel({ acknowledgeRisk: true }) : (rmMock.tunnel = true, { ok: true });
+      if (!res.ok) {
+        rmEls.tunnelEnable.checked = false;
+        rmNote('err', res.code === 'REMOTE_TUNNEL_BINARY_MISSING' ? '找不到 cloudflared，請先安裝。' : (res.error || '通道啟動失敗'));
+        return;
+      }
+      await refreshRemoteAccess();
+    } finally { rmEls.tunnelEnable.disabled = false; }
+  } else {
+    rmEls.tunnelEnable.disabled = true;
+    try {
+      if (rmApiReady) await window.api.stopRemoteTunnel(); else rmMock.tunnel = false;
+      await refreshRemoteAccess();
+    } finally { rmEls.tunnelEnable.disabled = false; }
+  }
+});
+
+// 後端廣播 → 即時更新
+if (rmApiReady) {
+  if (typeof window.api.onRemoteState === 'function') window.api.onRemoteState(() => refreshRemoteAccess());
+  if (typeof window.api.onRemoteTunnelState === 'function') window.api.onRemoteTunnelState(() => refreshRemoteAccess());
+}
+
+async function initRemote() {
+  try {
+    const status = await rmGetStatus();
+    const running = !!(status && status.running);
+    rmEls.enable.checked = running;
+    if (running) await refreshRemoteAccess();
+    if (!rmApiReady) rmNote('warn', '後端遠端服務未連上（瀏覽器預覽），以下為介面示範。');
+  } catch (e) {
+    rmNote('err', '遠端狀態載入失敗：' + e.message);
+  }
+}
+
 // 初始化
 loadAll();
 initWorkspace();
+initRemote();
