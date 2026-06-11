@@ -2,7 +2,18 @@
 
 const test = require('node:test');
 const assert = require('node:assert');
-const { fetchVoices } = require('../src/tts/elevenlabs');
+const { estimateCost, fetchVoices } = require('../src/tts/elevenlabs');
+
+test('estimates paid synthesis usage from Unicode characters', () => {
+  assert.deepStrictEqual(estimateCost('你好 A', 0.30), {
+    characters: 4,
+    cost: 0.0012,
+  });
+  assert.deepStrictEqual(estimateCost('free', 0), {
+    characters: 4,
+    cost: 0,
+  });
+});
 
 // 建一個假的 Response
 function jsonRes(body, { ok = true, status = 200 } = {}) {

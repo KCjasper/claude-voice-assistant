@@ -169,6 +169,8 @@ async function chat(userText, opts = {}) {
 
   const prefs = store.loadPrefs();
   const model = opts.model || prefs.defaultModel || 'claude-sonnet-4-6';
+  const maxOutputTokens = Math.max(1, Number(opts.maxOutputTokens) || 2048);
+  const maxCostUsd = Number(opts.maxCostUsd);
 
   const historyBeforeTurn = history.slice();
   history.push({ role: 'user', content: userText });
@@ -183,9 +185,42 @@ async function chat(userText, opts = {}) {
       cancellation.throwIfAborted(signal);
       onProgress({ phase: 'thinking', iteration: i });
 
+      let iterationMaxTokens = maxOutputTokens;
+      const price = pricing.getPrice?.(model);
+      if (price && Number.isFinite(maxCostUsd) && maxCostUsd > 0) {
+        const currentCost = pricing.computeCost(model, usage) || 0;
+        const promptText = messages
+          .map((message) => typeof message.content === 'string'
+            ? message.content
+            : JSON.stringify(message.content || ''))
+          .join('\n') + JSON.stringify(tools.schema);
+        const promptCost = (estimateTokens(promptText) / 1e6) * price.in;
+        const remainingForOutput = maxCostUsd - currentCost - promptCost;
+        iterationMaxTokens = Math.min(
+          maxOutputTokens,
+          Math.floor((remainingForOutput / price.out) * 1e6)
+        );
+        if (iterationMaxTokens < 1) {
+          return {
+            ok: false,
+            code: 'REQUEST_COST_LIMIT_REACHED',
+            error: 'The configured per-request cost limit was reached.',
+            usage,
+            cost: currentCost,
+            model,
+          };
+        }
+      }
+
       const { content, tool_calls, usage: u } = await streamOnce(
         client,
-        { model, messages, tools: tools.schema, tool_choice: 'auto' },
+        {
+          model,
+          messages,
+          tools: tools.schema,
+          tool_choice: 'auto',
+          max_tokens: iterationMaxTokens,
+        },
         (sentence) => {
           cancellation.throwIfAborted(signal);
           fullText += (fullText ? ' ' : '') + sentence;
@@ -240,4 +275,4 @@ async function chat(userText, opts = {}) {
   }
 }
 
-module.exports = { chat, resetConversation };
+module.exports = { chat, estimateTokens, resetConversation };

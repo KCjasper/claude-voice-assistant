@@ -18,7 +18,11 @@ test('records usage in daily and monthly buckets without mutating input', () => 
     usd: 0.25,
     prompt: 100,
     completion: 50,
+    characters: 0,
     calls: 1,
+    providers: {
+      ai: { usd: 0.25, calls: 1, characters: 0 },
+    },
   });
   assert.deepEqual(result.months['2026-06'], result.days['2026-06-09']);
 });
@@ -45,7 +49,11 @@ test('normalizes invalid and negative values to zero', () => {
     usd: 0,
     prompt: 0,
     completion: 7,
+    characters: 0,
     calls: 1,
+    providers: {
+      ai: { usd: 0, calls: 1, characters: 0 },
+    },
   });
 });
 
@@ -54,8 +62,22 @@ test('reports enabled, remaining and reached cap states', () => {
   const usage = ledger.recordUsage(null, { cost: 4.5 }, now);
 
   assert.deepEqual(ledger.capStatus(usage, 5, now), {
-    today: { usd: 4.5, prompt: 0, completion: 0, calls: 1 },
-    month: { usd: 4.5, prompt: 0, completion: 0, calls: 1 },
+    today: {
+      usd: 4.5,
+      prompt: 0,
+      completion: 0,
+      characters: 0,
+      calls: 1,
+      providers: { ai: { usd: 4.5, calls: 1, characters: 0 } },
+    },
+    month: {
+      usd: 4.5,
+      prompt: 0,
+      completion: 0,
+      characters: 0,
+      calls: 1,
+      providers: { ai: { usd: 4.5, calls: 1, characters: 0 } },
+    },
     capUsd: 5,
     enabled: true,
     overCap: false,
@@ -63,6 +85,23 @@ test('reports enabled, remaining and reached cap states', () => {
   });
   assert.equal(ledger.capStatus(usage, 4, now).overCap, true);
   assert.equal(ledger.capStatus(usage, 0, now).remainingUsd, null);
+});
+
+test('records paid TTS characters and provider cost metadata', () => {
+  const usage = ledger.recordUsage(null, {
+    provider: 'elevenlabs',
+    cost: 0.03,
+    characters: 100,
+  }, new Date(2026, 5, 9));
+  const bucket = usage.days['2026-06-09'];
+
+  assert.equal(bucket.usd, 0.03);
+  assert.equal(bucket.characters, 100);
+  assert.deepEqual(bucket.providers.elevenlabs, {
+    usd: 0.03,
+    calls: 1,
+    characters: 100,
+  });
 });
 
 test('retains only the newest 90 daily buckets', () => {

@@ -7,6 +7,15 @@ const cancellation = require('../tasks/cancellation');
 const DEFAULT_MODEL = 'eleven_multilingual_v2';
 const API = 'https://api.elevenlabs.io/v1';
 
+function estimateCost(text, costPer1KCharsUsd) {
+  const characters = [...String(text || '').trim()].length;
+  const rate = Number(costPer1KCharsUsd);
+  const cost = Number.isFinite(rate) && rate > 0
+    ? (characters / 1000) * rate
+    : 0;
+  return { characters, cost };
+}
+
 function timeoutFetch(url, options = {}, ms = 20000, parentSignal) {
   const timeout = cancellation.timeoutSignal(parentSignal, ms);
   return fetch(url, { ...options, signal: timeout.signal }).finally(timeout.cleanup);
@@ -51,7 +60,16 @@ async function synthesize(text, opts = {}) {
     }
     const buf = Buffer.from(await res.arrayBuffer());
     if (!buf.length) return { ok: false, error: '合成結果為空' };
-    return { ok: true, audioBase64: buf.toString('base64') };
+    return {
+      ok: true,
+      audioBase64: buf.toString('base64'),
+      providerUsage: {
+        provider: 'elevenlabs',
+        characters: [...clean].length,
+        model,
+        voiceId,
+      },
+    };
   } catch (e) {
     if (signal?.aborted) {
       return { ok: false, code: 'CANCELLED', cancelled: true, error: 'Speech synthesis cancelled.' };
@@ -114,4 +132,10 @@ async function listVoices() {
   }
 }
 
-module.exports = { synthesize, listVoices, fetchVoices, DEFAULT_MODEL };
+module.exports = {
+  synthesize,
+  listVoices,
+  fetchVoices,
+  estimateCost,
+  DEFAULT_MODEL,
+};

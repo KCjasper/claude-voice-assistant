@@ -18,6 +18,9 @@ const DEFAULT_PREFS = {
   ttsRate: 1.0,
   pttHotkey: 'Control+Space',
   monthlyCapUsd: 50,
+  maxAiRequestUsd: 1,
+  maxAiOutputTokens: 2048,
+  elevenLabsCostPer1KCharsUsd: 0.30,
   usage: { days: {}, months: {} },
   modelRouting: true,
   searchProvider: 'tavily',    // 'tavily' | 'brave' | 'google'

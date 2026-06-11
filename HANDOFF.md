@@ -105,3 +105,12 @@ https://github.com/KCjasper/claude-voice-assistant（公開）
 - With a spending cap enabled, unknown-price models are marked unavailable for automatic selection instead of failing later in the usage policy.
 - Added `ai:list-models` / `window.api.listModels()` for frontend catalog consumption without changing frontend UI files.
 - AI responses now include routing and catalog-fallback metadata. Added catalog, routing, fallback, cache, pricing, and preload tests.
+
+## Backend #9 - spending reservations and paid TTS accounting (2026-06-11)
+- Added `BudgetManager` reservations shared by AI and ElevenLabs requests so concurrent work cannot collectively exceed the remaining monthly cap.
+- Added `maxAiRequestUsd` and `maxAiOutputTokens`; the AI engine converts the remaining dollar budget into a per-iteration `max_tokens` bound.
+- Cost-bearing AI work is recorded even when a later tool-loop iteration stops at the request cost limit.
+- The monthly cap now covers both AI and ElevenLabs. ElevenLabs reserves and records estimated cost using `elevenLabsCostPer1KCharsUsd`.
+- Usage buckets now include character counts and per-provider cost/call metadata while preserving existing total fields.
+- Failed and cancelled work releases reservations in `finally`; successful work reconciles to the authoritative usage ledger.
+- Added concurrent reservation, release, cost-bound, provider metadata, Unicode character estimate, and migration-compatible ledger tests. No frontend UI files were changed.

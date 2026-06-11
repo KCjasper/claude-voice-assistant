@@ -15,3 +15,10 @@ test('returns null for models without configured pricing', () => {
   assert.equal(pricing.hasKnownPrice('custom-model'), false);
   assert.equal(pricing.computeCost('custom-model', { prompt_tokens: 100 }), null);
 });
+
+test('exposes immutable copies of model pricing for request bounds', () => {
+  const price = pricing.getPrice('claude-sonnet-4-6');
+  assert.deepEqual(price, { in: 3, out: 15 });
+  price.in = 999;
+  assert.deepEqual(pricing.getPrice('claude-sonnet-4-6'), { in: 3, out: 15 });
+});

@@ -55,7 +55,12 @@ Module._load = function mockEngineDependencies(request, parent, isMain) {
     };
   }
   if (request === './tools') return { schema: [], execute: async () => '' };
-  if (request === './pricing') return { computeCost: () => 0 };
+  if (request === './pricing') {
+    return {
+      computeCost: () => 0,
+      getPrice: () => ({ in: 3, out: 15 }),
+    };
+  }
   return originalLoad.call(this, request, parent, isMain);
 };
 
@@ -85,4 +90,19 @@ test('cancelled AI turns are removed from conversation history', async () => {
     latestMessages.some((message) => message.content === 'second message'),
     true
   );
+});
+
+test('per-request cost bounds stop a call before exceeding its budget', async () => {
+  engine.resetConversation();
+  mode = 'success';
+  const before = requests.length;
+
+  const result = await engine.chat('Analyze a large architecture.', {
+    maxCostUsd: 0.000001,
+    maxOutputTokens: 2048,
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'REQUEST_COST_LIMIT_REACHED');
+  assert.equal(requests.length, before);
 });

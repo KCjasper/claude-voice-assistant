@@ -10,7 +10,7 @@ function evaluateRequest({ usage, monthlyCapUsd, model, date = new Date() }) {
     return {
       allowed: false,
       code: 'MONTHLY_CAP_REACHED',
-      error: `Monthly AI spending cap reached ($${usageSummary.capUsd.toFixed(2)}).`,
+      error: `Monthly spending cap reached ($${usageSummary.capUsd.toFixed(2)}).`,
       usageSummary,
     };
   }

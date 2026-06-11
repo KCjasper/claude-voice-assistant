@@ -16,7 +16,14 @@ function monthKey(date = new Date()) {
 }
 
 function blankBucket() {
-  return { usd: 0, prompt: 0, completion: 0, calls: 0 };
+  return {
+    usd: 0,
+    prompt: 0,
+    completion: 0,
+    characters: 0,
+    calls: 0,
+    providers: {},
+  };
 }
 
 function finiteNonNegative(value) {
@@ -25,11 +32,21 @@ function finiteNonNegative(value) {
 }
 
 function normalizeBucket(bucket) {
+  const providers = {};
+  for (const [name, value] of Object.entries(bucket?.providers || {})) {
+    providers[name] = {
+      usd: finiteNonNegative(value?.usd),
+      calls: finiteNonNegative(value?.calls),
+      characters: finiteNonNegative(value?.characters),
+    };
+  }
   return {
     usd: finiteNonNegative(bucket?.usd),
     prompt: finiteNonNegative(bucket?.prompt),
     completion: finiteNonNegative(bucket?.completion),
+    characters: finiteNonNegative(bucket?.characters),
     calls: finiteNonNegative(bucket?.calls),
+    providers,
   };
 }
 
@@ -59,8 +76,12 @@ function recordUsage(usage, entry, date = new Date()) {
     usd: finiteNonNegative(entry?.cost),
     prompt: finiteNonNegative(entry?.promptTokens),
     completion: finiteNonNegative(entry?.completionTokens),
+    characters: finiteNonNegative(entry?.characters),
     calls: 1,
   };
+  const provider = typeof entry?.provider === 'string' && entry.provider.trim()
+    ? entry.provider.trim()
+    : 'ai';
 
   next.days[day] = next.days[day] || blankBucket();
   next.months[month] = next.months[month] || blankBucket();
@@ -69,7 +90,16 @@ function recordUsage(usage, entry, date = new Date()) {
     bucket.usd += increment.usd;
     bucket.prompt += increment.prompt;
     bucket.completion += increment.completion;
+    bucket.characters += increment.characters;
     bucket.calls += increment.calls;
+    bucket.providers[provider] = bucket.providers[provider] || {
+      usd: 0,
+      calls: 0,
+      characters: 0,
+    };
+    bucket.providers[provider].usd += increment.usd;
+    bucket.providers[provider].calls += 1;
+    bucket.providers[provider].characters += increment.characters;
   }
 
   pruneOldBuckets(next.days, DAY_RETENTION);

@@ -21,6 +21,7 @@ const {
 } = require('./src/ai/model-catalog');
 const usageLedger = require('./src/usage/ledger');
 const usagePolicy = require('./src/usage/policy');
+const { BudgetManager } = require('./src/usage/budget-manager');
 const cancellation = require('./src/tasks/cancellation');
 const interruption = require('./src/tasks/interrupt');
 
@@ -39,6 +40,7 @@ const taskRegistry = new cancellation.TaskRegistry({
     }
   },
 });
+const budgetManager = new BudgetManager();
 const modelCatalog = new ModelCatalogService({
   getBaseUrl: () => store.loadPrefs().baseUrl,
   getApiKey: () => store.loadApiKey(),
@@ -358,6 +360,33 @@ ipcMain.handle('stt:transcribe', async (event, wavPath, opts) => {
 ipcMain.handle('tts:speak', async (event, text, opts = {}) => {
   const prefs = store.loadPrefs();
   const engineName = opts.engine || prefs.ttsEngine || 'edge';
+  let reservation = null;
+  let estimatedTts = null;
+  if (engineName === 'elevenlabs') {
+    estimatedTts = eleven.estimateCost(
+      text,
+      prefs.elevenLabsCostPer1KCharsUsd
+    );
+    if (
+      Number(prefs.monthlyCapUsd) > 0
+      && estimatedTts.characters > 0
+      && estimatedTts.cost <= 0
+    ) {
+      return {
+        ok: false,
+        code: 'TTS_PRICE_UNKNOWN',
+        error: 'ElevenLabs pricing must be configured while the spending cap is enabled.',
+      };
+    }
+    reservation = budgetManager.reserve({
+      usage: prefs.usage,
+      monthlyCapUsd: prefs.monthlyCapUsd,
+      requestedUsd: estimatedTts.cost,
+      provider: 'elevenlabs',
+      allowPartial: false,
+    });
+    if (!reservation.ok) return reservation;
+  }
   const task = taskRegistry.start('tts');
   let status = 'failed';
 
@@ -380,7 +409,24 @@ ipcMain.handle('tts:speak', async (event, text, opts = {}) => {
     }
 
     status = result.ok ? 'completed' : 'failed';
-    return { ...result, requestId: task.id };
+    if (!result.ok || engineName !== 'elevenlabs') {
+      return { ...result, requestId: task.id };
+    }
+
+    const latestPrefs = store.loadPrefs();
+    const usage = usageLedger.recordUsage(latestPrefs.usage, {
+      provider: 'elevenlabs',
+      cost: estimatedTts.cost,
+      characters: estimatedTts.characters,
+    });
+    store.saveUsage(usage);
+    return {
+      ...result,
+      requestId: task.id,
+      requestCost: estimatedTts.cost,
+      usageRecorded: true,
+      usageSummary: usageLedger.capStatus(usage, latestPrefs.monthlyCapUsd),
+    };
   } catch (error) {
     if (cancellation.isAbortError(error) || task.signal.aborted) {
       status = 'cancelled';
@@ -388,6 +434,7 @@ ipcMain.handle('tts:speak', async (event, text, opts = {}) => {
     }
     return { ok: false, requestId: task.id, error: error.message };
   } finally {
+    budgetManager.release(reservation?.id);
     taskRegistry.finish(task.id, status);
   }
 });
@@ -450,11 +497,22 @@ ipcMain.handle('ai:chat', async (event, text, opts) => {
     };
   }
 
+  const reservation = budgetManager.reserve({
+    usage: prefs.usage,
+    monthlyCapUsd: prefs.monthlyCapUsd,
+    requestedUsd: prefs.maxAiRequestUsd,
+    provider: 'ai',
+    allowPartial: true,
+  });
+  if (!reservation.ok) return reservation;
+
   const task = taskRegistry.start('ai');
   let status = 'failed';
   try {
     const result = await engine.chat(text, {
       model,
+      maxCostUsd: reservation.amountUsd,
+      maxOutputTokens: prefs.maxAiOutputTokens,
       signal: task.signal,
       onProgress: (p) => {
         try {
@@ -472,10 +530,29 @@ ipcMain.handle('ai:chat', async (event, text, opts) => {
       return cancellation.cancelledResult(task.id);
     }
 
-    if (!result.ok) return { ...result, requestId: task.id };
+    if (!result.ok) {
+      if (Number(result.cost) > 0 && result.usage) {
+        const latestPrefs = store.loadPrefs();
+        const usage = usageLedger.recordUsage(latestPrefs.usage, {
+          provider: 'ai',
+          cost: result.cost,
+          promptTokens: result.usage.prompt_tokens,
+          completionTokens: result.usage.completion_tokens,
+        });
+        store.saveUsage(usage);
+        return {
+          ...result,
+          requestId: task.id,
+          usageRecorded: true,
+          usageSummary: usageLedger.capStatus(usage, latestPrefs.monthlyCapUsd),
+        };
+      }
+      return { ...result, requestId: task.id };
+    }
 
     const latestPrefs = store.loadPrefs();
     const usage = usageLedger.recordUsage(latestPrefs.usage, {
+      provider: 'ai',
       cost: result.cost,
       promptTokens: result.usage?.prompt_tokens,
       completionTokens: result.usage?.completion_tokens,
@@ -501,6 +578,7 @@ ipcMain.handle('ai:chat', async (event, text, opts) => {
     }
     return { ok: false, requestId: task.id, error: error.message };
   } finally {
+    budgetManager.release(reservation.id);
     taskRegistry.finish(task.id, status);
   }
 });
