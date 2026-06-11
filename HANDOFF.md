@@ -50,8 +50,9 @@
 - **金鑰**：全部走 `store.saveSecret`/`safeStorage` 加密，設定頁輸入，**絕不**經過聊天。
 
 ## 我的待辦（前端）— 2026-06-12 更新
-- **#23 對齊真實 WS 協定**：後端 #21 協定 v1 已定（`app/src/remote/PROTOCOL.md`），跟我的假定差異大，`mobile-client/remote.js` 需重寫對齊（見下方差異表）。後端 serve 的是 **`app/mobile/`**（目前不存在）→ 客戶端檔案要搬過去或協調路徑。
-- **#24 手機遠端管理 UI — 已解鎖**：後端 #21/#22 完成，preload 已有全套 IPC（`getRemoteStatus`/`getRemoteAccess`/`startRemote`/`stopRemote`/`rotateRemoteToken`/`startRemoteTunnel`/`stopRemoteTunnel`/`getRemoteProtocol`/`onRemoteState`/`onRemoteTunnelState`）。`remote:get-access` 回 LAN URL + fragment 配對連結 + QR PNG dataURL，直接能畫。
+- **#23 手機網頁客戶端 — ✅ 完成（已對齊協定 v1）**：客戶端在 **`app/mobile/`**（後端 server serve 此路徑）。詳見下方工作日誌。
+  - ⚠️ 舊版 `mobile-client/`（假定協定）**已棄用**，被 `app/mobile/` 取代，待 KC 確認後可刪。
+- **#24 手機遠端管理 UI — 進行中**：後端 #21/#22 完成，preload 已有全套 IPC（`getRemoteStatus`/`getRemoteAccess`/`startRemote`/`stopRemote`/`rotateRemoteToken`/`startRemoteTunnel`/`stopRemoteTunnel`/`getRemoteProtocol`/`onRemoteState`/`onRemoteTunnelState`）。`remote:get-access` 回 LAN URL + fragment 配對連結 + QR PNG dataURL，直接能畫。
 - **新解鎖的前端機會**（後端 2026-06-11 一波交付）：
   - #10 熱鍵已可設定：`getPttHotkey`/`setPttHotkey`/`onPttHotkeyChanged` — 設定頁那行「暫時不可改」可以做成真 UI 了
   - #11 模型目錄：`listModels()` — MODEL 下拉可改吃動態清單
@@ -59,17 +60,28 @@
   - #19 `onWorkspaceChanged` 廣播已做：#20 的 guard 自動生效；preload 還補了 `pickWorkspace`/`setWorkspace` alias
 - （#7、#14、#25 已結；#20 完成；#23 UI 完成、連線層待對齊）
 
-## ⚠️ #23 假定協定 vs 真實協定 v1 差異（對齊 `remote.js` 用）
-| 項目 | 我的假定 | 真實（PROTOCOL.md） |
+## 📒 工作日誌 · #23 手機客戶端對齊協定 v1（2026-06-12 完成）
+> 給後端同事：客戶端已照你的 `app/src/remote/PROTOCOL.md` 完整對齊，以下是我這邊的實作重點。
+
+- **位置**：`app/mobile/`（你的 `RemoteServer` staticDir 指這裡）。純靜態零 build。檔案：
+  `index.html` / `styles.css` / `recorder.js`（WavRecorder）/ `remote.js`（RemoteClient）/ `app.js`（編排）/ `README.md`。
+- **連線/認證**：`/ws?token=<配對碼>`；連上收 `auth.ready` 後把 `sessionToken` 存 localStorage，下次自動 `/ws?session=` 重連。
+- **編排**（客戶端自己分請求，符合你的設計）：錄音→`stt.transcribe`(base64 WAV)→拿文字→`chat.send`（吃 `progress` 的 `phase:sentence/tool/thinking`）→每句 `tts.synthesize`→播放佇列。
+- **音訊**：`WavRecorder` 產 16kHz mono RIFF/WAVE（移植自桌面 `recorder.js`）。iOS 不能自訂 AudioContext 取樣率 → 用原生取樣率錄、自己 resample 到 16k。
+- **QR**：解析 `http://ip:port/#token=...`（fragment），對齊你 #22 的 `remote:get-access` 配對 URL 格式。
+- **已驗證**：mock 模式跑完整一回合（你說→工具→串流兩句→用量更新）UI 正常。真實 WS 端到端要等 #24 的 UI 把 server 開起來 + 實機手機掃 QR。
+- **棄用**：舊 `mobile-client/`（我先前照假定協定做的）已被 `app/mobile/` 取代，內容重複，建議刪除（等 KC 點頭）。
+
+### 假定協定 → 真實協定 v1 對照（已全部改掉）
+| 項目 | 舊假定（已棄） | 真實 v1（現行） |
 |---|---|---|
 | WS 路徑 | `/remote?token=X&v=1` | `/ws?token=<pairing>`，重連 `/ws?session=<session>` |
-| 認證 | 連線後送 `hello` | token 在 URL；server 回 `auth.ready`（含 session token，需自存供重連） |
-| 配對 URL | query string | **fragment** `#token=...`（不進 HTTP request，讀完要從網址列移除） |
-| 訊息格式 | `{type:'audio'/'text'...}` | 每訊息必帶唯一 `requestId`；`chat.send`/`stt.transcribe`/`tts.synthesize`/`request.cancel`/`interrupt`/`ping`/`session.get` |
-| 音訊 | MediaRecorder webm/opus | **WAV，max 8MB**（參考桌面 `app/src/audio/recorder.js` 的 WAV 打包） |
-| server 訊息 | state/transcript/sentence/tts/reply/usage | `auth.ready`/`progress`/`result`/`session.state`/`pong`/`error` |
-| 編排 | 後端一條龍 | STT→chat→TTS 由**客戶端分請求編排**；每連線最多 2 並發 |
-| 託管 | Vercel | 後端 serve `app/mobile/`（Vercel 仍可同份檔案另行部署；token 24h、配對 10 分鐘一次性） |
+| 認證 | 連線後送 `hello` | token 在 URL；server 回 `auth.ready`（含 session token，已自存重連） |
+| 配對 URL | query string | **fragment** `#token=...` |
+| 訊息 | `{type:'audio'/'text'}` | 每訊息帶 `requestId`；`chat.send`/`stt.transcribe`/`tts.synthesize`/`request.cancel`/`interrupt`/`ping` |
+| 音訊 | webm/opus | **WAV ≤8MB** |
+| server 訊息 | state/sentence/tts/reply | `auth.ready`/`progress`/`result`/`session.state`/`pong`/`error` |
+| 編排 | 後端一條龍 | 客戶端分請求；每連線最多 2 並發 |
 
 ## 🗂 工作資料夾切換 UI（#20，完成 2026-06-09）
 - 位置：設定頁 `settings.html` 的 **WORKSPACE** 區段（在 MODEL 與 VOICE 之間）+ `settings.js` 的 workspace 區塊 + `settings.css` 的 `.ws-*` 樣式。
