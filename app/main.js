@@ -2,6 +2,7 @@
 // 管理三個視窗：floating（浮窗）、fullscreen（Ops Center）、settings（設定）
 
 const { app, BrowserWindow, screen, ipcMain, globalShortcut, dialog } = require('electron');
+const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
 const store = require('./src/config/store');
@@ -33,6 +34,8 @@ const {
 } = require('./src/wake-word/wake-word-ipc');
 const connectorRegistry = require('./src/connectors/default-registry');
 const { registerConnectorIpc } = require('./src/connectors/connector-ipc');
+const { RemoteServer } = require('./src/remote/remote-server');
+const { registerRemoteIpc } = require('./src/remote/remote-ipc');
 
 const FLOATING_W = 340, FLOATING_H = 520, EDGE = 24;
 const FULLSCREEN_PADDING = 0;
@@ -42,10 +45,13 @@ let floatingWindow = null;
 let fullscreenWindow = null;
 let settingsWindow = null;
 let sessionManager = null;
+let remoteServer = null;
 
 function updateSession(method, ...args) {
   try {
-    return sessionManager?.[method](...args) || null;
+    const snapshot = sessionManager?.[method](...args) || null;
+    if (snapshot) remoteServer?.broadcastSession(snapshot);
+    return snapshot;
   } catch (error) {
     console.error(`Session ${method} failed:`, error);
     return null;
@@ -273,6 +279,11 @@ registerConnectorIpc({
   taskRegistry,
   registry: connectorRegistry,
 });
+registerRemoteIpc({
+  ipcMain,
+  store,
+  getServer: () => remoteServer,
+});
 
 // ========== IPC：API Key 加密讀寫 ==========
 ipcMain.handle('config:save-api-key', async (event, key) => {
@@ -388,11 +399,16 @@ ipcMain.handle('audio:save-recording', async (event, uint8) => {
 });
 
 // ========== IPC：Whisper 語音轉文字 ==========
-ipcMain.handle('stt:transcribe', async (event, wavPath, opts) => {
-  const sender = event.sender;
+async function transcribeAudio(
+  wavPath,
+  opts = {},
+  onProgress = () => {},
+  onTaskStart = () => {}
+) {
   const prefs = store.loadPrefs();
   const model = (opts && opts.model) || prefs.sttModel || 'medium-q5';
   const task = taskRegistry.start('stt');
+  try { onTaskStart({ type: 'stt', requestId: task.id }); } catch {}
   let status = 'failed';
 
   try {
@@ -403,7 +419,7 @@ ipcMain.handle('stt:transcribe', async (event, wavPath, opts) => {
       gpu: prefs.sttUseGpu !== false,
       signal: task.signal,
       onProgress: (p) => {
-        try { sender.send('stt:progress', { ...p, requestId: task.id }); } catch {}
+        try { onProgress({ ...p, requestId: task.id }); } catch {}
       },
     });
 
@@ -429,10 +445,16 @@ ipcMain.handle('stt:transcribe', async (event, wavPath, opts) => {
     } catch {}
     taskRegistry.finish(task.id, status);
   }
-});
+}
+
+ipcMain.handle('stt:transcribe', async (event, wavPath, opts) => (
+  transcribeAudio(wavPath, opts, (progress) => {
+    try { event.sender.send('stt:progress', progress); } catch {}
+  })
+));
 
 // ========== IPC：TTS 語音合成（依引擎路由）==========
-ipcMain.handle('tts:speak', async (event, text, opts = {}) => {
+async function synthesizeSpeech(text, opts = {}, onTaskStart = () => {}) {
   const prefs = store.loadPrefs();
   const engineName = opts.engine || prefs.ttsEngine || 'edge';
   let reservation = null;
@@ -463,6 +485,7 @@ ipcMain.handle('tts:speak', async (event, text, opts = {}) => {
     if (!reservation.ok) return reservation;
   }
   const task = taskRegistry.start('tts');
+  try { onTaskStart({ type: 'tts', requestId: task.id }); } catch {}
   let status = 'failed';
 
   try {
@@ -512,18 +535,26 @@ ipcMain.handle('tts:speak', async (event, text, opts = {}) => {
     budgetManager.release(reservation?.id);
     taskRegistry.finish(task.id, status);
   }
-});
+}
+
+ipcMain.handle('tts:speak', async (event, text, opts = {}) => (
+  synthesizeSpeech(text, opts)
+));
 
 // 列出 ElevenLabs 帳號可用聲音
 ipcMain.handle('tts:list-eleven-voices', async () => await eleven.listVoices());
 
 // ========== IPC：AI 對話（Claw Router agent loop）==========
-ipcMain.handle('ai:chat', async (event, text, opts) => {
+async function chatWithAssistant(
+  text,
+  opts = {},
+  onProgress = () => {},
+  onTaskStart = () => {}
+) {
   if (taskRegistry.hasType('ai')) {
     return { ok: false, code: 'AI_BUSY', error: 'AI is already processing another request.' };
   }
 
-  const sender = event.sender;
   const prefs = store.loadPrefs();
   let availableModels = null;
   let catalogError = null;
@@ -582,6 +613,7 @@ ipcMain.handle('ai:chat', async (event, text, opts) => {
   if (!reservation.ok) return reservation;
 
   const task = taskRegistry.start('ai');
+  try { onTaskStart({ type: 'ai', requestId: task.id }); } catch {}
   const sessionTurn = updateSession('startTurn', text, { clientTurnId });
   let status = 'failed';
   try {
@@ -594,7 +626,7 @@ ipcMain.handle('ai:chat', async (event, text, opts) => {
       onProgress: (p) => {
         updateSession('progress', sessionTurn?.id, p);
         try {
-          sender.send('ai:progress', {
+          onProgress({
             ...p,
             requestId: task.id,
             clientTurnId,
@@ -665,7 +697,13 @@ ipcMain.handle('ai:chat', async (event, text, opts) => {
     budgetManager.release(reservation.id);
     taskRegistry.finish(task.id, status);
   }
-});
+}
+
+ipcMain.handle('ai:chat', async (event, text, opts) => (
+  chatWithAssistant(text, opts, (progress) => {
+    try { event.sender.send('ai:progress', progress); } catch {}
+  })
+));
 
 ipcMain.handle('ai:reset', async () => {
   const cancelled = taskRegistry.cancel({ type: 'ai' });
@@ -694,13 +732,41 @@ if (!gotLock) {
     floatingWindow.focus();
   });
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     cleanupOldRecordings();
     sessionManager = new SessionManager({
       filePath: path.join(app.getPath('userData'), 'session.json'),
       getWindows: () => BrowserWindow.getAllWindows(),
     });
     engine.hydrateConversation(sessionManager.conversationHistory());
+    remoteServer = new RemoteServer({
+      staticDir: path.join(__dirname, 'mobile'),
+      handlers: {
+        chat: ({ text, options, onProgress, onTaskStart }) => (
+          chatWithAssistant(text, options, onProgress, onTaskStart)
+        ),
+        transcribe: ({ audio, options, onProgress, onTaskStart }) => {
+          const filePath = path.join(
+            getRecordingDir(),
+            `remote-${Date.now()}-${crypto.randomUUID()}.wav`
+          );
+          fs.writeFileSync(filePath, audio);
+          return transcribeAudio(filePath, options, onProgress, onTaskStart);
+        },
+        speak: ({ text, options, onTaskStart }) => (
+          synthesizeSpeech(text, options, onTaskStart)
+        ),
+        interrupt: () => interruptApp(),
+        cancelTask: ({ type, requestId }) => cancelTasks(type, requestId),
+        getSession: () => sessionManager?.snapshot() || null,
+      },
+      onState: (state) => {
+        for (const window of BrowserWindow.getAllWindows()) {
+          if (window.isDestroyed()) continue;
+          try { window.webContents.send('remote:state', state); } catch {}
+        }
+      },
+    });
     createFloatingWindow();
 
     // 允許麥克風（不彈權限請求）
@@ -715,12 +781,24 @@ if (!gotLock) {
       hotkeyManager.markStartupFailure(accelerator, hotkey.error);
     }
     wakeWordService.configure(store.loadPrefs());
+    const remotePrefs = store.loadPrefs();
+    if (remotePrefs.remoteEnabled) {
+      const result = await remoteServer.start({
+        host: '0.0.0.0',
+        port: remotePrefs.remotePort,
+      });
+      if (!result.ok) {
+        store.savePrefs({ remoteEnabled: false });
+        console.error('Remote server startup failed:', result.error);
+      }
+    }
   });
 
   app.on('will-quit', () => {
     taskRegistry.cancel();
     hotkeyManager.stop();
     wakeWordService.stop();
+    void remoteServer?.stop();
   });
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();

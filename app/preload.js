@@ -127,4 +127,16 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('connector:event', listener);
     return () => ipcRenderer.removeListener('connector:event', listener);
   },
+
+  // ===== Mobile remote =====
+  getRemoteStatus: () => ipcRenderer.invoke('remote:get-status'),
+  startRemote: (options) => ipcRenderer.invoke('remote:start', options || {}),
+  stopRemote: () => ipcRenderer.invoke('remote:stop'),
+  rotateRemoteToken: () => ipcRenderer.invoke('remote:rotate-token'),
+  getRemoteProtocol: () => ipcRenderer.invoke('remote:get-protocol'),
+  onRemoteState: (callback) => {
+    const listener = (_event, state) => callback(state);
+    ipcRenderer.on('remote:state', listener);
+    return () => ipcRenderer.removeListener('remote:state', listener);
+  },
 });

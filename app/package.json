@@ -23,6 +23,7 @@
     "@picovoice/porcupine-node": "^4.0.2",
     "@picovoice/pvrecorder-node": "^1.2.9",
     "msedge-tts": "^2.0.5",
-    "openai": "^6.42.0"
+    "openai": "^6.42.0",
+    "ws": "^8.21.0"
   }
 }

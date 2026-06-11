@@ -136,3 +136,10 @@ https://github.com/KCjasper/claude-voice-assistant（公開）
 - Added `notion_create_page` behind a deduplicated, expiring, one-time confirmation boundary. AI tool calls can only queue the action; renderer approval executes it.
 - Added connector IPC/preload contracts for list, credentials, health, pending confirmations, approve/reject, and event subscriptions.
 - Added registry permission-policy, expiry, audit, Notion request/header/payload, and preload contract tests. Connector tokens and page body content are excluded from audit records.
+
+## Backend #21 - embedded mobile HTTP/WebSocket server (2026-06-11)
+- Added an opt-in main-process HTTP + `ws` server that serves `app/mobile` assets and bridges mobile chat, WAV transcription, TTS synthesis, interrupt, cancellation, progress, and authoritative session snapshots through the same desktop runtime.
+- Added one-time 10-minute pairing tokens that exchange for hashed 24-hour session tokens. Tokens are memory-only; rotate/stop revokes sessions and disconnects clients.
+- WebSocket upgrades require authentication and same-host browser origins. Direct traffic is restricted to private, link-local, or loopback addresses; static paths reject traversal, dotfiles, symlink escapes, and oversized files.
+- Added per-client concurrency limits, 8 MB WAV validation, 20,000-character text limits, disconnect task cancellation, CSP/security headers, configurable port, lifecycle IPC, preload APIs, and protocol v1 documentation.
+- Added real HTTP/WebSocket integration tests for 401 rejection, one-time pairing, reconnect, progress/results, session state, invalid audio, disconnect cancellation, token revocation, LAN address policy, IPC, and static serving. No mobile UI files were added.

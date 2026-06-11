@@ -72,6 +72,12 @@ test('preload exposes the documented workspace contract', async () => {
   assert.equal(typeof exposedApi.approveConnectorAction, 'function');
   assert.equal(typeof exposedApi.rejectConnectorAction, 'function');
   assert.equal(typeof exposedApi.onConnectorEvent, 'function');
+  assert.equal(typeof exposedApi.getRemoteStatus, 'function');
+  assert.equal(typeof exposedApi.startRemote, 'function');
+  assert.equal(typeof exposedApi.stopRemote, 'function');
+  assert.equal(typeof exposedApi.rotateRemoteToken, 'function');
+  assert.equal(typeof exposedApi.getRemoteProtocol, 'function');
+  assert.equal(typeof exposedApi.onRemoteState, 'function');
 
   await exposedApi.getWorkspace();
   await exposedApi.chooseWorkspace();
@@ -96,6 +102,11 @@ test('preload exposes the documented workspace contract', async () => {
   await exposedApi.getPendingConnectorConfirmations();
   await exposedApi.approveConnectorAction('confirm-1');
   await exposedApi.rejectConnectorAction('confirm-2');
+  await exposedApi.getRemoteStatus();
+  await exposedApi.startRemote({ port: 8787 });
+  await exposedApi.stopRemote();
+  await exposedApi.rotateRemoteToken();
+  await exposedApi.getRemoteProtocol();
   assert.deepEqual(invokes, [
     ['workspace:get'],
     ['workspace:choose'],
@@ -120,6 +131,11 @@ test('preload exposes the documented workspace contract', async () => {
     ['connector:pending-confirmations'],
     ['connector:approve', 'confirm-1'],
     ['connector:reject', 'confirm-2'],
+    ['remote:get-status'],
+    ['remote:start', { port: 8787 }],
+    ['remote:stop'],
+    ['remote:rotate-token'],
+    ['remote:get-protocol'],
   ]);
 
   const received = [];
