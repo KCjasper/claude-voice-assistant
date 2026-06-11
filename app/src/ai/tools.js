@@ -8,6 +8,7 @@ const cancellation = require('../tasks/cancellation');
 const urlFetch = require('./url-fetch');
 const fileWrite = require('./file-write');
 const workspacePolicy = require('../config/workspace-policy');
+const connectorRegistry = require('../connectors/default-registry');
 
 function workspaceRoot() {
   return store.getWorkspaceState().workspaceDir;
@@ -21,7 +22,7 @@ function safeResolve(p, { allowRoot = false } = {}) {
 }
 
 // ===== 工具的 JSON schema（給模型看的）=====
-const schema = [
+const coreSchema = [
   {
     type: 'function',
     function: {
@@ -98,6 +99,7 @@ const schema = [
     },
   },
 ];
+const schema = [...coreSchema, ...connectorRegistry.schema()];
 
 // ===== 工具實作 =====
 
@@ -127,7 +129,11 @@ async function execute(name, args, opts = {}) {
       case 'list_directory': return listDirectory(args);
       case 'fetch_url': return await urlFetch.fetchUrl(args.url, opts);
       case 'web_search': return await search.webSearch(args.query, args.count || 5, opts);
-      default: return `錯誤：未知的工具 ${name}`;
+      default:
+        if (connectorRegistry.hasTool(name)) {
+          return await connectorRegistry.execute(name, args, opts);
+        }
+        return `錯誤：未知的工具 ${name}`;
     }
   } catch (e) {
     if (cancellation.isAbortError(e) || opts.signal?.aborted) throw e;
@@ -135,4 +141,10 @@ async function execute(name, args, opts = {}) {
   }
 }
 
-module.exports = { schema, execute, workspaceRoot };
+module.exports = {
+  connectorRegistry,
+  coreSchema,
+  schema,
+  execute,
+  workspaceRoot,
+};

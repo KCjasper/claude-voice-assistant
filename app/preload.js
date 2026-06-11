@@ -109,4 +109,22 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('wake-word:detected', listener);
     return () => ipcRenderer.removeListener('wake-word:detected', listener);
   },
+
+  // ===== External connectors =====
+  listConnectors: () => ipcRenderer.invoke('connector:list'),
+  setConnectorCredential: (connectorId, credential) => (
+    ipcRenderer.invoke('connector:set-credential', connectorId, credential)
+  ),
+  clearConnectorCredential: (connectorId) => (
+    ipcRenderer.invoke('connector:clear-credential', connectorId)
+  ),
+  checkConnectorHealth: (connectorId) => ipcRenderer.invoke('connector:health', connectorId),
+  getPendingConnectorConfirmations: () => ipcRenderer.invoke('connector:pending-confirmations'),
+  approveConnectorAction: (confirmationId) => ipcRenderer.invoke('connector:approve', confirmationId),
+  rejectConnectorAction: (confirmationId) => ipcRenderer.invoke('connector:reject', confirmationId),
+  onConnectorEvent: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('connector:event', listener);
+    return () => ipcRenderer.removeListener('connector:event', listener);
+  },
 });

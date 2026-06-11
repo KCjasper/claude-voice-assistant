@@ -64,6 +64,14 @@ test('preload exposes the documented workspace contract', async () => {
   assert.equal(typeof exposedApi.retryWakeWord, 'function');
   assert.equal(typeof exposedApi.onWakeWordState, 'function');
   assert.equal(typeof exposedApi.onWakeWordDetected, 'function');
+  assert.equal(typeof exposedApi.listConnectors, 'function');
+  assert.equal(typeof exposedApi.setConnectorCredential, 'function');
+  assert.equal(typeof exposedApi.clearConnectorCredential, 'function');
+  assert.equal(typeof exposedApi.checkConnectorHealth, 'function');
+  assert.equal(typeof exposedApi.getPendingConnectorConfirmations, 'function');
+  assert.equal(typeof exposedApi.approveConnectorAction, 'function');
+  assert.equal(typeof exposedApi.rejectConnectorAction, 'function');
+  assert.equal(typeof exposedApi.onConnectorEvent, 'function');
 
   await exposedApi.getWorkspace();
   await exposedApi.chooseWorkspace();
@@ -81,6 +89,13 @@ test('preload exposes the documented workspace contract', async () => {
   await exposedApi.clearWakeWordAccessKey();
   await exposedApi.chooseWakeWordKeyword();
   await exposedApi.retryWakeWord();
+  await exposedApi.listConnectors();
+  await exposedApi.setConnectorCredential('notion', 'secret');
+  await exposedApi.clearConnectorCredential('notion');
+  await exposedApi.checkConnectorHealth('notion');
+  await exposedApi.getPendingConnectorConfirmations();
+  await exposedApi.approveConnectorAction('confirm-1');
+  await exposedApi.rejectConnectorAction('confirm-2');
   assert.deepEqual(invokes, [
     ['workspace:get'],
     ['workspace:choose'],
@@ -98,6 +113,13 @@ test('preload exposes the documented workspace contract', async () => {
     ['wake-word:clear-access-key'],
     ['wake-word:choose-keyword'],
     ['wake-word:retry'],
+    ['connector:list'],
+    ['connector:set-credential', 'notion', 'secret'],
+    ['connector:clear-credential', 'notion'],
+    ['connector:health', 'notion'],
+    ['connector:pending-confirmations'],
+    ['connector:approve', 'confirm-1'],
+    ['connector:reject', 'confirm-2'],
   ]);
 
   const received = [];

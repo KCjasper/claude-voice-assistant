@@ -253,7 +253,10 @@ async function chat(userText, opts = {}) {
           let parsedArgs = {};
           try { parsedArgs = JSON.parse(tc.function.arguments || '{}'); } catch {}
           onProgress({ phase: 'tool', name: tc.function.name, args: parsedArgs });
-          const result = await tools.execute(tc.function.name, parsedArgs, { signal });
+          const result = await tools.execute(tc.function.name, parsedArgs, {
+            signal,
+            requestId: opts.requestId,
+          });
           cancellation.throwIfAborted(signal);
           const toolMsg = {
             role: 'tool', tool_call_id: tc.id,

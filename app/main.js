@@ -31,6 +31,8 @@ const {
   registerWakeWordIpc,
   sanitizeConfig: sanitizeWakeWordConfig,
 } = require('./src/wake-word/wake-word-ipc');
+const connectorRegistry = require('./src/connectors/default-registry');
+const { registerConnectorIpc } = require('./src/connectors/connector-ipc');
 
 const FLOATING_W = 340, FLOATING_H = 520, EDGE = 24;
 const FULLSCREEN_PADDING = 0;
@@ -90,6 +92,12 @@ const wakeWordService = new WakeWordService({
     if (!floatingWindow.isVisible()) floatingWindow.show();
     floatingWindow.webContents.send('hotkey:toggle-record');
   },
+});
+connectorRegistry.setEventSink((payload) => {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (window.isDestroyed()) continue;
+    try { window.webContents.send('connector:event', payload); } catch {}
+  }
 });
 
 // ========== 浮動視窗 ==========
@@ -259,6 +267,11 @@ registerWakeWordIpc({
   dialog,
   store,
   service: wakeWordService,
+});
+registerConnectorIpc({
+  ipcMain,
+  taskRegistry,
+  registry: connectorRegistry,
 });
 
 // ========== IPC：API Key 加密讀寫 ==========
@@ -576,6 +589,7 @@ ipcMain.handle('ai:chat', async (event, text, opts) => {
       model,
       maxCostUsd: reservation.amountUsd,
       maxOutputTokens: prefs.maxAiOutputTokens,
+      requestId: task.id,
       signal: task.signal,
       onProgress: (p) => {
         updateSession('progress', sessionTurn?.id, p);

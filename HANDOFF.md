@@ -129,3 +129,10 @@ https://github.com/KCjasper/claude-voice-assistant（公開）
 - Existing renderer session states pause wake capture during interaction/recording/playback and resume it when idle, preventing microphone and feedback conflicts without frontend changes.
 - Added IPC for state, detection, device listing, configuration, encrypted AccessKey setup, keyword selection, and retry.
 - Added service tests for detection, pause/resume, validation, device failures, capture failures, cleanup, and preload contracts. Audio frames are not persisted or uploaded.
+
+## Backend #15 - connector registry and Notion integration (2026-06-11)
+- Added a connector registry separate from local tools, with encrypted credential lifecycle, health checks, structured errors, cancellation, timeouts, events, and metadata-only JSONL auditing.
+- Added `notion_search` as the first read-only vertical integration using Notion API version `2026-03-11`.
+- Added `notion_create_page` behind a deduplicated, expiring, one-time confirmation boundary. AI tool calls can only queue the action; renderer approval executes it.
+- Added connector IPC/preload contracts for list, credentials, health, pending confirmations, approve/reject, and event subscriptions.
+- Added registry permission-policy, expiry, audit, Notion request/header/payload, and preload contract tests. Connector tokens and page body content are excluded from audit records.
