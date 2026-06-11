@@ -54,6 +54,7 @@ test('preload exposes the documented workspace contract', async () => {
   assert.equal(typeof exposedApi.getPttHotkey, 'function');
   assert.equal(typeof exposedApi.setPttHotkey, 'function');
   assert.equal(typeof exposedApi.onPttHotkeyChanged, 'function');
+  assert.equal(typeof exposedApi.listModels, 'function');
 
   await exposedApi.getWorkspace();
   await exposedApi.chooseWorkspace();
@@ -63,6 +64,7 @@ test('preload exposes the documented workspace contract', async () => {
   await exposedApi.removeWorkspace('C:\\projects\\Old');
   await exposedApi.getPttHotkey();
   await exposedApi.setPttHotkey('Control+Space');
+  await exposedApi.listModels({ force: true });
   assert.deepEqual(invokes, [
     ['workspace:get'],
     ['workspace:choose'],
@@ -72,6 +74,7 @@ test('preload exposes the documented workspace contract', async () => {
     ['workspace:remove', 'C:\\projects\\Old'],
     ['hotkey:get'],
     ['hotkey:set', 'Control+Space'],
+    ['ai:list-models', { force: true }],
   ]);
 
   const received = [];

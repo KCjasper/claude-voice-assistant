@@ -15,6 +15,10 @@ const whisper = require('./src/stt/whisper');
 const tts = require('./src/tts/speak');
 const eleven = require('./src/tts/elevenlabs');
 const engine = require('./src/ai/engine');
+const {
+  ModelCatalogService,
+  resolveModel,
+} = require('./src/ai/model-catalog');
 const usageLedger = require('./src/usage/ledger');
 const usagePolicy = require('./src/usage/policy');
 const cancellation = require('./src/tasks/cancellation');
@@ -34,6 +38,10 @@ const taskRegistry = new cancellation.TaskRegistry({
       try { window.webContents.send('task:state', state); } catch {}
     }
   },
+});
+const modelCatalog = new ModelCatalogService({
+  getBaseUrl: () => store.loadPrefs().baseUrl,
+  getApiKey: () => store.loadApiKey(),
 });
 const hotkeyManager = new HotkeyManager({
   globalShortcut,
@@ -212,6 +220,23 @@ ipcMain.handle('config:test-connection', async () => {
   return await store.testConnection();
 });
 
+ipcMain.handle('ai:list-models', async (event, options = {}) => {
+  const prefs = store.loadPrefs();
+  try {
+    const catalog = await modelCatalog.getCatalog({
+      force: options.force === true,
+      monthlyCapUsd: prefs.monthlyCapUsd,
+    });
+    return { ok: true, ...catalog };
+  } catch (error) {
+    return {
+      ok: false,
+      code: error.code || 'MODEL_CATALOG_FAILED',
+      error: error.message,
+    };
+  }
+});
+
 // ========== IPC：通用加密 secret（搜尋 key 等）==========
 ipcMain.handle('config:save-secret', async (event, name, value) => {
   try { store.saveSecret(name, value); return { ok: true }; }
@@ -378,7 +403,37 @@ ipcMain.handle('ai:chat', async (event, text, opts) => {
 
   const sender = event.sender;
   const prefs = store.loadPrefs();
-  const model = (opts && opts.model) || prefs.defaultModel || 'claude-sonnet-4-6';
+  let availableModels = null;
+  let catalogError = null;
+  try {
+    const catalog = await modelCatalog.getCatalog({
+      monthlyCapUsd: prefs.monthlyCapUsd,
+    });
+    availableModels = catalog.models;
+  } catch (error) {
+    catalogError = {
+      code: error.code || 'MODEL_CATALOG_FAILED',
+      error: error.message,
+    };
+  }
+  const routing = resolveModel({
+    requestedModel: opts && opts.model,
+    defaultModel: prefs.defaultModel,
+    modelRouting: prefs.modelRouting,
+    monthlyCapUsd: prefs.monthlyCapUsd,
+    text,
+    availableModels,
+  });
+  if (!routing.ok) {
+    return {
+      ok: false,
+      code: routing.code,
+      error: routing.error,
+      routing,
+      catalogError,
+    };
+  }
+  const model = routing.model;
   const clientTurnId = opts && opts.clientTurnId;
   const policy = usagePolicy.evaluateRequest({
     usage: prefs.usage,
@@ -436,6 +491,8 @@ ipcMain.handle('ai:chat', async (event, text, opts) => {
       cost: undefined,
       usageRecorded: true,
       usageSummary: usageLedger.capStatus(usage, latestPrefs.monthlyCapUsd),
+      routing,
+      catalogError,
     };
   } catch (error) {
     if (cancellation.isAbortError(error) || task.signal.aborted) {

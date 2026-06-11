@@ -56,6 +56,7 @@ contextBridge.exposeInMainWorld('api', {
 
   // ===== AI 對話 =====
   chat: (text, opts) => ipcRenderer.invoke('ai:chat', text, opts || {}),
+  listModels: (opts) => ipcRenderer.invoke('ai:list-models', opts || {}),
   resetConversation: () => ipcRenderer.invoke('ai:reset'),
   onAiProgress: (callback) => {
     ipcRenderer.on('ai:progress', (_e, p) => callback(p));

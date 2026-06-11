@@ -15,6 +15,14 @@ function hasKnownPrice(model) {
   return Object.hasOwn(PRICE, model);
 }
 
+function getPrice(model) {
+  return PRICE[model] ? { ...PRICE[model] } : null;
+}
+
+function knownModels() {
+  return Object.keys(PRICE);
+}
+
 function computeCost(model, usage) {
   const price = PRICE[model];
   if (!price) return null;
@@ -24,4 +32,4 @@ function computeCost(model, usage) {
   return (promptTokens / 1e6) * price.in + (completionTokens / 1e6) * price.out;
 }
 
-module.exports = { computeCost, hasKnownPrice };
+module.exports = { computeCost, getPrice, hasKnownPrice, knownModels };

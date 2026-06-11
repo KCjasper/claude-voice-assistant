@@ -97,3 +97,11 @@ https://github.com/KCjasper/claude-voice-assistant（公開）
 - Added `hotkey:get` / `hotkey:set`, preload methods, and `hotkey:changed` broadcasts for all live windows.
 - `config:save-prefs` applies `pttHotkey` changes through the manager before persistence.
 - Added startup/replacement/conflict/IPC/preload tests. No frontend UI files were changed.
+
+## Backend #11 - provider model catalog and routing (2026-06-11)
+- Added `app/src/ai/model-catalog.js` with provider `/models` fetching, five-minute caching, normalization, timeout handling, and pricing compatibility metadata.
+- Added deterministic `fast` / `balanced` / `reasoning` routing when `prefs.modelRouting` is enabled.
+- Routing validates provider availability when the catalog is reachable and falls back from unavailable or unknown-price models.
+- With a spending cap enabled, unknown-price models are marked unavailable for automatic selection instead of failing later in the usage policy.
+- Added `ai:list-models` / `window.api.listModels()` for frontend catalog consumption without changing frontend UI files.
+- AI responses now include routing and catalog-fallback metadata. Added catalog, routing, fallback, cache, pricing, and preload tests.
