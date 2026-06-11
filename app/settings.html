@@ -202,8 +202,12 @@
       </div>
 
       <div class="field">
-        <label>Push-to-talk 熱鍵</label>
-        <div class="static-value"><kbd>Ctrl</kbd> + <kbd>Space</kbd>（暫時不可改）</div>
+        <label>Push-to-talk 熱鍵 <span class="hint" id="hotkeyState"></span></label>
+        <div class="key-row">
+          <div class="static-value" id="hotkeyDisplay" style="flex:1;">Ctrl + Space</div>
+          <button class="btn-secondary" id="btnChangeHotkey">變更</button>
+        </div>
+        <div class="hint">按「變更」後，直接按下你要的組合鍵（需含 Ctrl / Alt / Shift）。按 Esc 取消。</div>
       </div>
     </div>
 

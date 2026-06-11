@@ -819,8 +819,93 @@ async function initModels() {
   } catch {}
 }
 
+// ============================================================
+// HOTKEY · 可設定 Push-to-talk 熱鍵 (#10)
+// 後端契約：getPttHotkey() -> { ok, accelerator, registered, error }
+//           setPttHotkey(acc) -> { ok, accelerator, registered, error } | { ok:false, code, error }
+//           onPttHotkeyChanged(cb) -> cb({ accelerator, registered, error })
+// 後端不存在時走預覽（顯示但不真的註冊）。
+// ============================================================
+const hkEls = { display: $('hotkeyDisplay'), change: $('btnChangeHotkey'), state: $('hotkeyState') };
+const hkApiReady = !!(window.api && typeof window.api.getPttHotkey === 'function');
+let hkCapturing = false;
+
+function acceleratorToLabel(acc) {
+  return String(acc || '').split('+').map((k) => (k === 'Control' ? 'Ctrl' : k === 'Super' ? 'Win' : k)).join(' + ');
+}
+function renderHotkey(state) {
+  if (!state) return;
+  hkEls.display.textContent = state.accelerator ? acceleratorToLabel(state.accelerator) : '（未設定）';
+  if (state.registered) { hkEls.state.textContent = '· 已生效'; hkEls.state.style.color = '#34d399'; }
+  else { hkEls.state.textContent = '· 未生效' + (state.error ? '：' + state.error : ''); hkEls.state.style.color = '#f87171'; }
+}
+
+// 瀏覽器 keydown → Electron accelerator（需含修飾鍵 + 一個主鍵）
+function eventToAccelerator(e) {
+  if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) return null; // 還在等主鍵
+  const mods = [];
+  if (e.ctrlKey) mods.push('Control');
+  if (e.altKey) mods.push('Alt');
+  if (e.shiftKey) mods.push('Shift');
+  if (e.metaKey) mods.push('Super');
+  const code = e.code;
+  let main = '';
+  if (code === 'Space' || e.key === ' ') main = 'Space';
+  else if (/^Key[A-Z]$/.test(code)) main = code.slice(3);
+  else if (/^Digit[0-9]$/.test(code)) main = code.slice(5);
+  else if (/^F([1-9]|1[0-9]|2[0-4])$/.test(e.key)) main = e.key;
+  else if (e.key === 'ArrowUp') main = 'Up';
+  else if (e.key === 'ArrowDown') main = 'Down';
+  else if (e.key === 'ArrowLeft') main = 'Left';
+  else if (e.key === 'ArrowRight') main = 'Right';
+  else if (e.key.length === 1) main = e.key.toUpperCase();
+  else main = e.key; // Enter / Tab / etc.
+  if (!main) return null;
+  if (!mods.length) return { error: '請至少包含一個 Ctrl / Alt / Shift' };
+  return { accelerator: mods.concat(main).join('+') };
+}
+
+function startCapture() {
+  if (hkCapturing) return;
+  hkCapturing = true;
+  hkEls.change.textContent = '請按組合鍵…';
+  hkEls.display.textContent = '按下你要的鍵（Esc 取消）';
+  hkEls.state.textContent = '';
+  window.addEventListener('keydown', onCaptureKey, true);
+}
+function stopCapture() {
+  hkCapturing = false;
+  hkEls.change.textContent = '變更';
+  window.removeEventListener('keydown', onCaptureKey, true);
+}
+async function onCaptureKey(e) {
+  e.preventDefault(); e.stopPropagation();
+  if (e.key === 'Escape') { stopCapture(); await loadHotkey(); return; }
+  const r = eventToAccelerator(e);
+  if (!r) return;
+  if (r.error) { hkEls.state.textContent = '· ' + r.error; hkEls.state.style.color = '#fbbf24'; return; }
+  stopCapture();
+  await applyHotkey(r.accelerator);
+}
+async function applyHotkey(acc) {
+  if (!hkApiReady) { renderHotkey({ accelerator: acc, registered: true }); showResult('ok', '（預覽）熱鍵會設為 ' + acceleratorToLabel(acc)); return; }
+  const res = await window.api.setPttHotkey(acc);
+  renderHotkey(res);
+  if (res && res.ok) showResult('ok', '✓ 熱鍵已更新為 ' + acceleratorToLabel(acc));
+  else showResult('err', '熱鍵設定失敗：' + ((res && (res.error || res.code)) || '未知') + '（可能與其他程式衝突，換一組試試）');
+}
+async function loadHotkey() {
+  if (!hkApiReady) { renderHotkey({ accelerator: 'Control+Space', registered: true }); hkEls.state.textContent = '· （預覽）'; hkEls.state.style.color = ''; return; }
+  try { renderHotkey(await window.api.getPttHotkey()); } catch {}
+}
+hkEls.change.addEventListener('click', () => { if (hkCapturing) { stopCapture(); loadHotkey(); } else startCapture(); });
+if (hkApiReady && typeof window.api.onPttHotkeyChanged === 'function') {
+  window.api.onPttHotkeyChanged((s) => { if (!hkCapturing) renderHotkey(s); });
+}
+
 // 初始化
 loadAll();
 initWorkspace();
 initRemote();
 initModels();
+loadHotkey();

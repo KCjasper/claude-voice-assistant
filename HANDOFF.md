@@ -60,6 +60,17 @@
   - #19 `onWorkspaceChanged` 廣播已做：#20 的 guard 自動生效；preload 還補了 `pickWorkspace`/`setWorkspace` alias
 - （#7、#14、#25 已結；#20 完成；#23 UI 完成、連線層待對齊）
 
+## 📒 工作日誌 · #10 可設定 Push-to-talk 熱鍵 UI（2026-06-12 完成）
+> 給後端同事：設定頁 VOICE 區那行「暫時不可改」改成可錄製熱鍵，已接 hotkey IPC。
+
+- **位置**：`settings.html` VOICE 區的熱鍵 field（顯示 + 「變更」鈕 + `hotkeyState` 狀態字）；`settings.js` 的 `hk*` 區塊。
+- **契約**：`getPttHotkey()` / `setPttHotkey(acc)` → `{ ok, accelerator, registered, error }`；`onPttHotkeyChanged(cb)` 廣播。
+- **互動**：點「變更」進入捕捉 → 監聽 `keydown`（capture phase + preventDefault）→ 轉成 Electron accelerator → `setPttHotkey`。Esc 取消。
+- **轉換**：瀏覽器 keydown → accelerator：修飾鍵 Control/Alt/Shift/Super；主鍵支援字母/數字/Space/F1-24/方向鍵；**強制至少一個修飾鍵**（避免單鍵搶全域）；純修飾鍵 keydown 忽略等主鍵。
+- **狀態**：`registered:true` 綠字「已生效」；`false` 紅字顯示 error（如與其他程式衝突）。`onPttHotkeyChanged` 廣播時更新（捕捉中不覆蓋）。
+- **已驗證**：轉換多案例（Ctrl+Space、Ctrl+Alt+A、Shift+F2、無修飾鍵拒絕、純修飾鍵忽略）正確；完整捕捉互動（點變更→按 Ctrl+Shift+M→顯示更新）正常。
+- **降級**：`window.api.getPttHotkey` 不存在時走預覽（顯示但不真註冊）。
+
 ## 📒 工作日誌 · #11 模型動態清單（2026-06-12 完成）
 > 給後端同事：MODEL 下拉改吃 `listModels()` 動態清單，已對接。
 
