@@ -9,6 +9,7 @@ const WebSocket = require('ws');
 const {
   RemoteServer,
   isPrivateAddress,
+  originMatchesRequest,
 } = require('../src/remote/remote-server');
 
 function nextMessage(ws, predicate = () => true) {
@@ -62,6 +63,35 @@ test('accepts only private, link-local and loopback client addresses', () => {
   assert.equal(isPrivateAddress('fd00::1'), true);
   assert.equal(isPrivateAddress('8.8.8.8'), false);
   assert.equal(isPrivateAddress('2001:4860:4860::8888'), false);
+});
+
+test('trusts forwarded browser origins only from loopback proxies', () => {
+  const request = (remoteAddress, origin, host, forwardedHost) => ({
+    socket: { remoteAddress },
+    headers: {
+      origin,
+      host,
+      'x-forwarded-host': forwardedHost,
+    },
+  });
+  assert.equal(originMatchesRequest(request(
+    '127.0.0.1',
+    'https://demo.trycloudflare.com',
+    '127.0.0.1:8787',
+    'demo.trycloudflare.com'
+  )), true);
+  assert.equal(originMatchesRequest(request(
+    '192.168.1.20',
+    'https://demo.trycloudflare.com',
+    '192.168.1.10:8787',
+    'demo.trycloudflare.com'
+  )), false);
+  assert.equal(originMatchesRequest(request(
+    '192.168.1.20',
+    'http://192.168.1.10:8787',
+    '192.168.1.10:8787',
+    ''
+  )), true);
 });
 
 test('serves static assets and rejects unauthenticated WebSocket upgrades', async (t) => {

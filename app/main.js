@@ -36,6 +36,7 @@ const connectorRegistry = require('./src/connectors/default-registry');
 const { registerConnectorIpc } = require('./src/connectors/connector-ipc');
 const { RemoteServer } = require('./src/remote/remote-server');
 const { registerRemoteIpc } = require('./src/remote/remote-ipc');
+const { CloudflaredTunnel } = require('./src/remote/cloudflared-tunnel');
 
 const FLOATING_W = 340, FLOATING_H = 520, EDGE = 24;
 const FULLSCREEN_PADDING = 0;
@@ -46,6 +47,14 @@ let fullscreenWindow = null;
 let settingsWindow = null;
 let sessionManager = null;
 let remoteServer = null;
+const remoteTunnel = new CloudflaredTunnel({
+  onState: (state) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (window.isDestroyed()) continue;
+      try { window.webContents.send('remote:tunnel-state', state); } catch {}
+    }
+  },
+});
 
 function updateSession(method, ...args) {
   try {
@@ -283,6 +292,7 @@ registerRemoteIpc({
   ipcMain,
   store,
   getServer: () => remoteServer,
+  getTunnel: () => remoteTunnel,
 });
 
 // ========== IPC：API Key 加密讀寫 ==========
@@ -798,7 +808,7 @@ if (!gotLock) {
     taskRegistry.cancel();
     hotkeyManager.stop();
     wakeWordService.stop();
-    void remoteServer?.stop();
+    void remoteTunnel.stop().then(() => remoteServer?.stop());
   });
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();

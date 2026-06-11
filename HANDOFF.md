@@ -143,3 +143,11 @@ https://github.com/KCjasper/claude-voice-assistant（公開）
 - WebSocket upgrades require authentication and same-host browser origins. Direct traffic is restricted to private, link-local, or loopback addresses; static paths reject traversal, dotfiles, symlink escapes, and oversized files.
 - Added per-client concurrency limits, 8 MB WAV validation, 20,000-character text limits, disconnect task cancellation, CSP/security headers, configurable port, lifecycle IPC, preload APIs, and protocol v1 documentation.
 - Added real HTTP/WebSocket integration tests for 401 rejection, one-time pairing, reconnect, progress/results, session state, invalid audio, disconnect cancellation, token revocation, LAN address policy, IPC, and static serving. No mobile UI files were added.
+
+## Backend #22 - LAN QR and optional Cloudflare tunnel (2026-06-11)
+- Added deterministic private IPv4 discovery and `remote:get-access`, which returns LAN base URLs, fragment-based pairing URLs, and PNG QR data URLs. Pairing tokens stay out of HTTP request paths and query strings.
+- Added an official `cloudflared` Quick Tunnel process manager with PATH/configured executable discovery, explicit risk acknowledgement, HTTPS URL parsing, startup timeout, duplicate-start coordination, cancellation, state events, and app/remote shutdown cleanup.
+- Added `remote:start-tunnel`, `remote:stop-tunnel`, `getRemoteAccess`, `startRemoteTunnel`, `stopRemoteTunnel`, and `onRemoteTunnelState` backend/preload contracts. `stopRemote` always stops the public tunnel before disabling the local server.
+- Public proxy browser origins are accepted only when the forwarded host arrives from a loopback socket. Pairing/session token authentication remains mandatory for WebSocket access.
+- Added Cloudflare Quick Tunnel documentation and warnings: it is a development/testing service with no production SLA, the URL is Internet-accessible, and users must stop it after use. The backend does not download or bundle an unofficial tunnel binary.
+- Added LAN selection, QR metadata, real QR generation, tunnel discovery/start/timeout/stop/race, trusted proxy-origin, IPC, preload, full backend regression, dependency audit, and Electron startup coverage. No frontend UI files were changed.

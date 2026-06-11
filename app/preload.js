@@ -130,13 +130,21 @@ contextBridge.exposeInMainWorld('api', {
 
   // ===== Mobile remote =====
   getRemoteStatus: () => ipcRenderer.invoke('remote:get-status'),
+  getRemoteAccess: () => ipcRenderer.invoke('remote:get-access'),
   startRemote: (options) => ipcRenderer.invoke('remote:start', options || {}),
   stopRemote: () => ipcRenderer.invoke('remote:stop'),
   rotateRemoteToken: () => ipcRenderer.invoke('remote:rotate-token'),
+  startRemoteTunnel: (options) => ipcRenderer.invoke('remote:start-tunnel', options || {}),
+  stopRemoteTunnel: () => ipcRenderer.invoke('remote:stop-tunnel'),
   getRemoteProtocol: () => ipcRenderer.invoke('remote:get-protocol'),
   onRemoteState: (callback) => {
     const listener = (_event, state) => callback(state);
     ipcRenderer.on('remote:state', listener);
     return () => ipcRenderer.removeListener('remote:state', listener);
+  },
+  onRemoteTunnelState: (callback) => {
+    const listener = (_event, state) => callback(state);
+    ipcRenderer.on('remote:tunnel-state', listener);
+    return () => ipcRenderer.removeListener('remote:tunnel-state', listener);
   },
 });

@@ -5,8 +5,12 @@ WebSocket connections at `/ws`.
 
 ## Authentication
 
-1. The desktop exposes an in-memory pairing token through local Electron IPC.
-2. The mobile client connects to `/ws?token=<pairing-token>`.
+1. The desktop exposes an in-memory pairing URL through local Electron IPC and
+   renders it as a QR code. The token is placed in the URL fragment:
+   `http://<lan-ip>:<port>/#token=<pairing-token>`.
+2. The fragment is not sent in the HTTP request. The mobile client reads it,
+   removes it from the visible URL, then connects to
+   `/ws?token=<pairing-token>`.
 3. The token is consumed once. `auth.ready` returns a session token.
 4. Reconnect with `/ws?session=<session-token>`.
 5. Rotating the pairing token or stopping the server revokes all sessions.
@@ -14,7 +18,10 @@ WebSocket connections at `/ws`.
 Tokens are never persisted. WebSocket upgrades without a valid token receive
 HTTP 401. Browser origins must match the request host. Direct HTTP and
 WebSocket traffic is accepted only from private, link-local, or loopback
-addresses; a future local tunnel can proxy public traffic through loopback.
+addresses. A local Cloudflare process may proxy public traffic through
+loopback; forwarded hosts are trusted only when the socket peer is loopback.
+
+See `TUNNEL.md` for the public tunnel lifecycle and security boundary.
 
 ## Client messages
 

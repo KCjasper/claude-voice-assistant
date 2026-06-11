@@ -24,6 +24,7 @@ const DEFAULT_PREFS = {
   wakeWordModelPath: '',
   remoteEnabled: false,
   remotePort: 8787,
+  remoteTunnelBinaryPath: '',
   monthlyCapUsd: 50,
   maxAiRequestUsd: 1,
   maxAiOutputTokens: 2048,

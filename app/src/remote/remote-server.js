@@ -59,6 +59,30 @@ function isPrivateAddress(address) {
   );
 }
 
+function isLoopbackAddress(address) {
+  const value = String(address || '').toLowerCase().split('%')[0];
+  return value === '::1' || value === '127.0.0.1' || value === '::ffff:127.0.0.1';
+}
+
+function originMatchesRequest(request) {
+  const origin = request.headers?.origin;
+  if (!origin) return true;
+  try {
+    const originHost = new URL(origin).host.toLowerCase();
+    const accepted = new Set([String(request.headers?.host || '').toLowerCase()]);
+    if (isLoopbackAddress(request.socket?.remoteAddress)) {
+      const forwarded = String(request.headers?.['x-forwarded-host'] || '')
+        .split(',')[0]
+        .trim()
+        .toLowerCase();
+      if (forwarded) accepted.add(forwarded);
+    }
+    return accepted.has(originHost);
+  } catch {
+    return false;
+  }
+}
+
 class RemoteServer {
   constructor({
     staticDir,
@@ -291,15 +315,8 @@ class RemoteServer {
     if (requestUrl.pathname !== '/ws') {
       return this.rejectUpgrade(socket, 404, 'Not Found');
     }
-    const origin = request.headers.origin;
-    if (origin) {
-      try {
-        if (new URL(origin).host !== request.headers.host) {
-          return this.rejectUpgrade(socket, 403, 'Forbidden Origin');
-        }
-      } catch {
-        return this.rejectUpgrade(socket, 403, 'Forbidden Origin');
-      }
+    if (!originMatchesRequest(request)) {
+      return this.rejectUpgrade(socket, 403, 'Forbidden Origin');
     }
     const auth = this.tokenManager.authenticate({
       pairingToken: requestUrl.searchParams.get('token'),
@@ -495,7 +512,9 @@ module.exports = {
   MAX_TEXT_LENGTH,
   PROTOCOL_VERSION,
   RemoteServer,
+  isLoopbackAddress,
   isPrivateAddress,
   isWave,
+  originMatchesRequest,
   validPort,
 };
