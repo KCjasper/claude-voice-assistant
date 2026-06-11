@@ -82,4 +82,11 @@ contextBridge.exposeInMainWorld('api', {
   onHotkeyToggleRecord: (callback) => {
     ipcRenderer.on('hotkey:toggle-record', () => callback());
   },
+  getPttHotkey: () => ipcRenderer.invoke('hotkey:get'),
+  setPttHotkey: (accelerator) => ipcRenderer.invoke('hotkey:set', accelerator),
+  onPttHotkeyChanged: (callback) => {
+    const listener = (_event, state) => callback(state);
+    ipcRenderer.on('hotkey:changed', listener);
+    return () => ipcRenderer.removeListener('hotkey:changed', listener);
+  },
 });

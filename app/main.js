@@ -6,6 +6,11 @@ const path = require('path');
 const fs = require('fs');
 const store = require('./src/config/store');
 const workspaceIpc = require('./src/config/workspace-ipc');
+const {
+  HotkeyManager,
+  registerHotkeyIpc,
+  savePreferencesWithHotkey,
+} = require('./src/config/hotkey-manager');
 const whisper = require('./src/stt/whisper');
 const tts = require('./src/tts/speak');
 const eleven = require('./src/tts/elevenlabs');
@@ -28,6 +33,15 @@ const taskRegistry = new cancellation.TaskRegistry({
       if (window.isDestroyed()) continue;
       try { window.webContents.send('task:state', state); } catch {}
     }
+  },
+});
+const hotkeyManager = new HotkeyManager({
+  globalShortcut,
+  getWindows: () => BrowserWindow.getAllWindows(),
+  onTrigger: () => {
+    if (!floatingWindow) return;
+    if (!floatingWindow.isVisible()) floatingWindow.show();
+    floatingWindow.webContents.send('hotkey:toggle-record');
   },
 });
 
@@ -160,7 +174,11 @@ ipcMain.handle('config:get-prefs', async () => {
 });
 
 ipcMain.handle('config:save-prefs', async (event, partial) => {
-  return store.savePrefs(partial);
+  return savePreferencesWithHotkey({
+    partial,
+    manager: hotkeyManager,
+    store,
+  });
 });
 
 workspaceIpc.registerWorkspaceIpc({
@@ -169,6 +187,7 @@ workspaceIpc.registerWorkspaceIpc({
   BrowserWindow,
   store,
 });
+registerHotkeyIpc({ ipcMain, manager: hotkeyManager, store });
 
 // ========== IPC：API Key 加密讀寫 ==========
 ipcMain.handle('config:save-api-key', async (event, key) => {
@@ -470,17 +489,16 @@ if (!gotLock) {
       cb(false);
     });
 
-    // 全域熱鍵：Ctrl+Shift+Space = 切換錄音（之後改成喚醒詞）
-    globalShortcut.register('Control+Shift+Space', () => {
-      if (!floatingWindow) return;
-      if (!floatingWindow.isVisible()) floatingWindow.show();
-      floatingWindow.webContents.send('hotkey:toggle-record');
-    });
+    const accelerator = store.loadPrefs().pttHotkey;
+    const hotkey = hotkeyManager.setAccelerator(accelerator);
+    if (!hotkey.ok) {
+      hotkeyManager.markStartupFailure(accelerator, hotkey.error);
+    }
   });
 
   app.on('will-quit', () => {
     taskRegistry.cancel();
-    globalShortcut.unregisterAll();
+    hotkeyManager.stop();
   });
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();

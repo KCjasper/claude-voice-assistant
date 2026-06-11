@@ -89,3 +89,11 @@
 
 ## Repo
 https://github.com/KCjasper/claude-voice-assistant（公開）
+
+## Backend #10 - authoritative configurable push-to-talk hotkey (2026-06-11)
+- Added `app/src/config/hotkey-manager.js` as the single owner of Electron global shortcut registration.
+- Startup now reads `prefs.pttHotkey` instead of hard-coding `Control+Shift+Space`.
+- Replacements register the new accelerator before unregistering the old one; conflicts keep the working shortcut and return `HOTKEY_REGISTRATION_FAILED`.
+- Added `hotkey:get` / `hotkey:set`, preload methods, and `hotkey:changed` broadcasts for all live windows.
+- `config:save-prefs` applies `pttHotkey` changes through the manager before persistence.
+- Added startup/replacement/conflict/IPC/preload tests. No frontend UI files were changed.
