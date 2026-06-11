@@ -24,6 +24,7 @@ const usagePolicy = require('./src/usage/policy');
 const { BudgetManager } = require('./src/usage/budget-manager');
 const cancellation = require('./src/tasks/cancellation');
 const interruption = require('./src/tasks/interrupt');
+const { SessionManager } = require('./src/session/session-manager');
 
 const FLOATING_W = 340, FLOATING_H = 520, EDGE = 24;
 const FULLSCREEN_PADDING = 0;
@@ -32,6 +33,17 @@ const SETTINGS_W = 520, SETTINGS_H = 720;
 let floatingWindow = null;
 let fullscreenWindow = null;
 let settingsWindow = null;
+let sessionManager = null;
+
+function updateSession(method, ...args) {
+  try {
+    return sessionManager?.[method](...args) || null;
+  } catch (error) {
+    console.error(`Session ${method} failed:`, error);
+    return null;
+  }
+}
+
 const taskRegistry = new cancellation.TaskRegistry({
   onState: (state) => {
     for (const window of BrowserWindow.getAllWindows()) {
@@ -507,6 +519,7 @@ ipcMain.handle('ai:chat', async (event, text, opts) => {
   if (!reservation.ok) return reservation;
 
   const task = taskRegistry.start('ai');
+  const sessionTurn = updateSession('startTurn', text, { clientTurnId });
   let status = 'failed';
   try {
     const result = await engine.chat(text, {
@@ -515,6 +528,7 @@ ipcMain.handle('ai:chat', async (event, text, opts) => {
       maxOutputTokens: prefs.maxAiOutputTokens,
       signal: task.signal,
       onProgress: (p) => {
+        updateSession('progress', sessionTurn?.id, p);
         try {
           sender.send('ai:progress', {
             ...p,
@@ -527,10 +541,12 @@ ipcMain.handle('ai:chat', async (event, text, opts) => {
 
     if (task.signal.aborted || result.cancelled) {
       status = 'cancelled';
+      updateSession('failTurn', sessionTurn?.id, 'Request cancelled');
       return cancellation.cancelledResult(task.id);
     }
 
     if (!result.ok) {
+      updateSession('failTurn', sessionTurn?.id, result.error || 'Request failed');
       if (Number(result.cost) > 0 && result.usage) {
         const latestPrefs = store.loadPrefs();
         const usage = usageLedger.recordUsage(latestPrefs.usage, {
@@ -560,7 +576,7 @@ ipcMain.handle('ai:chat', async (event, text, opts) => {
     store.saveUsage(usage);
 
     status = 'completed';
-    return {
+    const response = {
       ...result,
       requestId: task.id,
       clientTurnId,
@@ -571,11 +587,15 @@ ipcMain.handle('ai:chat', async (event, text, opts) => {
       routing,
       catalogError,
     };
+    updateSession('completeTurn', sessionTurn?.id, response);
+    return { ...response, turnId: sessionTurn?.id || null };
   } catch (error) {
     if (cancellation.isAbortError(error) || task.signal.aborted) {
       status = 'cancelled';
+      updateSession('failTurn', sessionTurn?.id, 'Request cancelled');
       return cancellation.cancelledResult(task.id);
     }
+    updateSession('failTurn', sessionTurn?.id, error.message);
     return { ok: false, requestId: task.id, error: error.message };
   } finally {
     budgetManager.release(reservation.id);
@@ -586,19 +606,14 @@ ipcMain.handle('ai:chat', async (event, text, opts) => {
 ipcMain.handle('ai:reset', async () => {
   const cancelled = taskRegistry.cancel({ type: 'ai' });
   engine.resetConversation();
+  updateSession('reset');
   return { ok: true, cancelled };
 });
 
-// ========== IPC：Ops Center session 中繼 ==========
-// 浮窗推送 session 快照 → main 暫存 → 轉發給全螢幕視窗
-let lastSession = { state: 'idle', convo: [] };
 ipcMain.on('session:update', (event, snapshot) => {
-  lastSession = snapshot || lastSession;
-  if (fullscreenWindow && !fullscreenWindow.isDestroyed()) {
-    try { fullscreenWindow.webContents.send('session:state', lastSession); } catch {}
-  }
+  updateSession('applyRendererSnapshot', snapshot);
 });
-ipcMain.handle('session:get', () => lastSession);
+ipcMain.handle('session:get', () => sessionManager?.snapshot() || { state: 'idle', convo: [] });
 
 // ========== App 生命週期 ==========
 // 單一實例鎖：避免重複啟動開出多個浮窗
@@ -616,6 +631,11 @@ if (!gotLock) {
 
   app.whenReady().then(() => {
     cleanupOldRecordings();
+    sessionManager = new SessionManager({
+      filePath: path.join(app.getPath('userData'), 'session.json'),
+      getWindows: () => BrowserWindow.getAllWindows(),
+    });
+    engine.hydrateConversation(sessionManager.conversationHistory());
     createFloatingWindow();
 
     // 允許麥克風（不彈權限請求）

@@ -59,6 +59,18 @@ function getClient() {
 
 function resetConversation() { history = []; }
 
+function hydrateConversation(messages) {
+  history = Array.isArray(messages)
+    ? messages
+        .filter((message) => (
+          (message?.role === 'user' || message?.role === 'assistant')
+          && typeof message.content === 'string'
+        ))
+        .map((message) => ({ role: message.role, content: message.content }))
+        .slice(-MAX_HISTORY)
+    : [];
+}
+
 function addUsage(acc, usage) {
   if (!usage) return;
   acc.prompt_tokens += usage.prompt_tokens || 0;
@@ -275,4 +287,9 @@ async function chat(userText, opts = {}) {
   }
 }
 
-module.exports = { chat, estimateTokens, resetConversation };
+module.exports = {
+  chat,
+  estimateTokens,
+  hydrateConversation,
+  resetConversation,
+};

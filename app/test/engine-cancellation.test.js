@@ -106,3 +106,20 @@ test('per-request cost bounds stop a call before exceeding its budget', async ()
   assert.equal(result.code, 'REQUEST_COST_LIMIT_REACHED');
   assert.equal(requests.length, before);
 });
+
+test('hydrates conversation history from completed backend turns', async () => {
+  engine.resetConversation();
+  engine.hydrateConversation([
+    { role: 'user', content: 'persisted user' },
+    { role: 'assistant', content: 'persisted assistant' },
+    { role: 'tool', content: 'must be ignored' },
+  ]);
+  mode = 'success';
+
+  const result = await engine.chat('new request');
+  assert.equal(result.ok, true);
+  const latestMessages = requests.at(-1);
+  assert.equal(latestMessages.some((message) => message.content === 'persisted user'), true);
+  assert.equal(latestMessages.some((message) => message.content === 'persisted assistant'), true);
+  assert.equal(latestMessages.some((message) => message.content === 'must be ignored'), false);
+});

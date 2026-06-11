@@ -114,3 +114,11 @@ https://github.com/KCjasper/claude-voice-assistant（公開）
 - Usage buckets now include character counts and per-provider cost/call metadata while preserving existing total fields.
 - Failed and cancelled work releases reservations in `finally`; successful work reconciles to the authoritative usage ledger.
 - Added concurrent reservation, release, cost-bound, provider metadata, Unicode character estimate, and migration-compatible ledger tests. No frontend UI files were changed.
+
+## Backend #13 - backend-owned persistent sessions (2026-06-11)
+- Added `SessionManager` with atomic `session.json` persistence, schema migration, retention, restart recovery, and multi-window broadcasts.
+- Backend-generated turn IDs now own AI lifecycle state; renderer-provided IDs are retained only as correlation metadata.
+- Completed user/assistant turns restore the AI engine history after restart. Tool arguments/results are never persisted.
+- Ops Center snapshots are rebuilt from backend state. Renderer updates may only supplement idle/listening/speaking display state and cannot inject conversation history.
+- Active work is marked interrupted after restart; reset clears both engine history and persisted session state.
+- Added restart, migration-compatible persistence, retention, sanitization, multi-window, renderer-injection, and engine hydration tests. No frontend UI files were changed.
