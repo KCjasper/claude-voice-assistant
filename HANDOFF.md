@@ -49,11 +49,27 @@
 - **TTS**：Edge（免費，14 中文 + 英式男聲）+ ElevenLabs（`prefs.ttsEngine='elevenlabs'`，走 v2 只列「我的聲音」）。KC 帳號有一個叫 **Jarvis** 的聲音。
 - **金鑰**：全部走 `store.saveSecret`/`safeStorage` 加密，設定頁輸入，**絕不**經過聊天。
 
-## 我的待辦（前端）
-- **#24** 手機遠端的桌面管理 UI（token/QR/開關）— 等後端 #21/#22 伺服器先好
-- （#7、#14 已完成關閉；#8 後端取消機制已完成；#25 Ctrl+Q 後端已修好）
-- **#23 手機網頁客戶端 — ✅ 已完成**（見下）
-- **#20 工作資料夾切換 UI — ✅ 完成**（已接後端 #18 真實 IPC，可端到端運作）
+## 我的待辦（前端）— 2026-06-12 更新
+- **#23 對齊真實 WS 協定**：後端 #21 協定 v1 已定（`app/src/remote/PROTOCOL.md`），跟我的假定差異大，`mobile-client/remote.js` 需重寫對齊（見下方差異表）。後端 serve 的是 **`app/mobile/`**（目前不存在）→ 客戶端檔案要搬過去或協調路徑。
+- **#24 手機遠端管理 UI — 已解鎖**：後端 #21/#22 完成，preload 已有全套 IPC（`getRemoteStatus`/`getRemoteAccess`/`startRemote`/`stopRemote`/`rotateRemoteToken`/`startRemoteTunnel`/`stopRemoteTunnel`/`getRemoteProtocol`/`onRemoteState`/`onRemoteTunnelState`）。`remote:get-access` 回 LAN URL + fragment 配對連結 + QR PNG dataURL，直接能畫。
+- **新解鎖的前端機會**（後端 2026-06-11 一波交付）：
+  - #10 熱鍵已可設定：`getPttHotkey`/`setPttHotkey`/`onPttHotkeyChanged` — 設定頁那行「暫時不可改」可以做成真 UI 了
+  - #11 模型目錄：`listModels()` — MODEL 下拉可改吃動態清單
+  - #12 喚醒詞服務：`wake-word:*` 一整組 IPC — 設定頁可加 Hey Claude 區段
+  - #19 `onWorkspaceChanged` 廣播已做：#20 的 guard 自動生效；preload 還補了 `pickWorkspace`/`setWorkspace` alias
+- （#7、#14、#25 已結；#20 完成；#23 UI 完成、連線層待對齊）
+
+## ⚠️ #23 假定協定 vs 真實協定 v1 差異（對齊 `remote.js` 用）
+| 項目 | 我的假定 | 真實（PROTOCOL.md） |
+|---|---|---|
+| WS 路徑 | `/remote?token=X&v=1` | `/ws?token=<pairing>`，重連 `/ws?session=<session>` |
+| 認證 | 連線後送 `hello` | token 在 URL；server 回 `auth.ready`（含 session token，需自存供重連） |
+| 配對 URL | query string | **fragment** `#token=...`（不進 HTTP request，讀完要從網址列移除） |
+| 訊息格式 | `{type:'audio'/'text'...}` | 每訊息必帶唯一 `requestId`；`chat.send`/`stt.transcribe`/`tts.synthesize`/`request.cancel`/`interrupt`/`ping`/`session.get` |
+| 音訊 | MediaRecorder webm/opus | **WAV，max 8MB**（參考桌面 `app/src/audio/recorder.js` 的 WAV 打包） |
+| server 訊息 | state/transcript/sentence/tts/reply/usage | `auth.ready`/`progress`/`result`/`session.state`/`pong`/`error` |
+| 編排 | 後端一條龍 | STT→chat→TTS 由**客戶端分請求編排**；每連線最多 2 並發 |
+| 託管 | Vercel | 後端 serve `app/mobile/`（Vercel 仍可同份檔案另行部署；token 24h、配對 10 分鐘一次性） |
 
 ## 🗂 工作資料夾切換 UI（#20，完成 2026-06-09）
 - 位置：設定頁 `settings.html` 的 **WORKSPACE** 區段（在 MODEL 與 VOICE 之間）+ `settings.js` 的 workspace 區塊 + `settings.css` 的 `.ws-*` 樣式。
