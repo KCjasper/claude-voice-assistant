@@ -1,7 +1,7 @@
 # HANDOFF · 接手指南（給新 session / 新 AI 同事）
 
 > 這份檔案是「記憶外化」——讓新對話一開場讀完就能接手，不必重看舊對話。
-> 搭配 `README.md`（架構/進度）一起看。最後更新：2026-06-09（對應 commit 在 `git log` 最上面）。
+> 搭配 `README.md`（架構/進度）一起看。最後更新：2026-06-13（對應 commit 在 `git log` 最上面）。
 
 ## 📍 專案位置（最重要，先確認）
 - **本機路徑**：`D:\C槽使用者資料\Desktop\Claude-workspace\projects\voice-assistant`
@@ -49,7 +49,40 @@
 - **TTS**：Edge（免費，14 中文 + 英式男聲）+ ElevenLabs（`prefs.ttsEngine='elevenlabs'`，走 v2 只列「我的聲音」）。KC 帳號有一個叫 **Jarvis** 的聲音。
 - **金鑰**：全部走 `store.saveSecret`/`safeStorage` 加密，設定頁輸入，**絕不**經過聊天。
 
-## 我的待辦（前端）— 2026-06-12 更新
+## 我的待辦（前端）— 2026-06-13 更新
+- **🎨 Liquid Glass 全面改版進行中**（KC 指定的新設計語言，提示詞存於 `app/glass.css` 檔頭註解）：
+  - ✅ 階段 1：`glass.css` 設計系統 + 浮窗 `styles.css` + 設定頁 `settings.css` 玻璃化（詳見下方日誌）
+  - ⬜ 階段 2：Ops Center 全螢幕 `fullscreen.*` 玻璃化
+  - ⬜ 階段 3：手機客戶端 `app/mobile/styles.css` 對齊新設計語言
+- **#26 喚醒詞設定 UI — ✅ 完成**（詳見下方日誌）
+- **#27 Connector 設定與寫入確認 UI — ✅ 完成**（詳見下方日誌）
+
+## 📒 工作日誌 · 🎨 Liquid Glass 改版階段 1（2026-06-13 完成）
+> 給接手者：KC 不喜歡舊 UI，指定全面改成液態玻璃風格。設計提示詞（英文原文）在 `glass.css` 檔頭。
+
+- **`app/glass.css`（新檔，共用設計系統）**：CSS 變數（墨色階 `--ink-*`、冰川藍 accent、玻璃材質層 `--glass-*`、邊緣光 `--edge*`、景深 `--depth`）+ `.glass-panel`（多層：scrim→玻璃→上緣鏡面掃光→內部柔光）+ `.glass-card` / `.lg-btn` / `.lg-input` + 共用動畫 `lg-breathe/pulse/spin/expand/wave/rise`。
+- **浮窗 `styles.css`**：整面重寫成玻璃材質；Orb 改成水晶玻璃球（四態動畫沿用 class：`.assistant.idle/listening/thinking/speaking`）。
+- **設定頁 `settings.css`**：全區段玻璃化（內凹玻璃輸入、膠囊玻璃按鈕、玻璃卡片）。
+- **本 session 修掉的兩個視覺 bug**（瀏覽器 mock 預覽抓到）：
+  1. `.ws-item-main` 是 `<button>` 沒 reset → 吃到 UA 灰白底變白條：補 `background:transparent;border:none;font:inherit` 等 reset。
+  2. `input[type=range]`（說話速度、靈敏度）UA 白軌道：改自訂 `::-webkit-slider-runnable-track`（內凹玻璃）+ `::-webkit-slider-thumb`(玻璃拇指 + hover 放大)。
+- **已驗證**：111/111 tests pass；`node --check` 過;瀏覽器 mock 預覽逐區段截圖確認（settings 全區段、浮窗 idle/listening）。
+- **眉角**：HTML 引入順序必須 `glass.css` → 視窗自己的 css（變數在 glass.css 定義）。瀏覽器預覽 `renderer.js` 沒 `window.api` 會中斷屬既有行為，CSS 驗證不受影響。
+
+## 📒 工作日誌 · #26 喚醒詞設定 UI（2026-06-13 完成）
+> 給後端同事：設定頁加了 WAKE WORD 區段（VOICE 與 WEB SEARCH 之間），已接你 #12 的全部 IPC。
+
+- **位置**：`settings.html` WAKE WORD 區段 + `settings.js` 的 `ww*` 區塊。
+- **契約**：`getWakeWordState` / `listWakeWordDevices` / `setWakeWordConfig({wakeWordEnabled,sensitivity,deviceIndex})` / `setWakeWordAccessKey` / `clearWakeWordAccessKey` / `chooseWakeWordKeyword` / `retryWakeWord` / `onWakeWordState`。
+- **UI**：啟用開關、狀態列（disabled/starting/listening/paused/fallback 對應狀態點顏色）、AccessKey 輸入（password + 顯示切換，走 secret store 絕不進 prefs）、麥克風下拉、靈敏度滑桿、自訂 .ppn 選擇、fallback 時明示「仍可用 Push-to-talk」+ 重試鈕。
+- **降級**：`window.api.getWakeWordState` 不存在走預覽模式。
+
+## 📒 工作日誌 · #27 Connector 設定與寫入確認 UI（2026-06-13 完成）
+> 給後端同事：兩塊 — 設定頁 CONNECTORS 區段 + 浮窗確認卡，已接你 #15 的 IPC。
+
+- **設定頁**：`settings.html` CONNECTORS 區段（REMOTE 與 SPENDING 之間）+ `settings.js` 的 `conn*` 區塊。`listConnectors()` 渲染清單（configured 狀態、tools/risk）；Notion token 只走 `setConnectorCredential('notion', token)`（不進 prefs、不回顯）；`clearConnectorCredential` / `checkConnectorHealth`（顯示 account 或 structured error）。
+- **浮窗確認卡**：`index.html` 的 `#confirmStack` + `renderer.js` 確認卡區塊 + `styles.css` 的 `.confirm-*`。訂閱 `onConnectorEvent` 的 `confirmation-required`；視窗重開用 `getPendingConnectorConfirmations()` 重建。卡片顯示 connector/tool、title、parentPageId、contentPreview、TTL 倒數；**只有使用者顯式點「核准」**才呼叫 `approveConnectorAction(id)`，拒絕走 `rejectConnectorAction(id)`；處理 expired / `CONFIRMATION_NOT_FOUND`。內容一律 `textContent` 塞（防注入）。
+- **降級**：無 `window.api` 時設定頁顯示預覽模式、浮窗確認卡不啟動。
 - **#23 手機網頁客戶端 — ✅ 完成（已對齊協定 v1）**：客戶端在 **`app/mobile/`**（後端 server serve 此路徑）。詳見下方工作日誌。
   - ⚠️ 舊版 `mobile-client/`（假定協定）**已棄用**，被 `app/mobile/` 取代，待 KC 確認後可刪。
 - **#24 手機遠端管理 UI — ✅ 完成**：設定頁 REMOTE 區段，已接 #21/#22 真實 IPC。詳見下方工作日誌。

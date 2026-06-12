@@ -903,9 +903,292 @@ if (hkApiReady && typeof window.api.onPttHotkeyChanged === 'function') {
   window.api.onPttHotkeyChanged((s) => { if (!hkCapturing) renderHotkey(s); });
 }
 
+// ============================================================
+// WAKE WORD (#26) — Hey Claude 喚醒詞設定
+//   契約：getWakeWordState / listWakeWordDevices / setWakeWordConfig
+//        setWakeWordAccessKey / clearWakeWordAccessKey
+//        chooseWakeWordKeyword / retryWakeWord / onWakeWordState
+//   state = { enabled, sensitivity, deviceIndex, keywordConfigured,
+//             status: disabled|starting|listening|paused|fallback,
+//             accessKeyConfigured, code?, error? }
+// ============================================================
+const wwEls = {
+  enable: $('wwEnable'),
+  statusDot: $('wwStatusDot'),
+  statusText: $('wwStatusText'),
+  error: $('wwError'),
+  key: $('wwAccessKey'),
+  keyStatus: $('wwKeyStatus'),
+  reveal: $('wwReveal'),
+  saveKey: $('wwSaveKey'),
+  clearKey: $('wwClearKey'),
+  retry: $('wwRetry'),
+  device: $('wwDevice'),
+  sensitivity: $('wwSensitivity'),
+  sensValue: $('wwSensValue'),
+  keywordPath: $('wwKeywordPath'),
+  chooseKeyword: $('wwChooseKeyword'),
+};
+const wwApiReady = !!(window.api && typeof window.api.getWakeWordState === 'function');
+
+const WW_STATUS_LABEL = {
+  disabled: '已停用',
+  starting: '啟動中⋯',
+  listening: '監聽中 — 喊「Hey Claude」即可喚醒',
+  paused: '暫停（錄音/對話進行中會自動暫停）',
+  fallback: '無法啟動 — 已退回熱鍵模式',
+};
+
+function wwShowError(msg) {
+  if (!msg) { wwEls.error.className = 'test-result'; wwEls.error.textContent = ''; return; }
+  wwEls.error.className = 'test-result show err';
+  wwEls.error.textContent = msg;
+}
+
+function renderWakeWord(state) {
+  if (!state) return;
+  if (typeof state.enabled === 'boolean') wwEls.enable.checked = state.enabled;
+  const status = state.status || (state.enabled ? 'starting' : 'disabled');
+  wwEls.statusDot.className = 'status-dot ' + status;
+  wwEls.statusText.textContent = WW_STATUS_LABEL[status] || status;
+  if (status === 'fallback' || state.error) {
+    wwShowError((state.error || '喚醒詞引擎啟動失敗') + '\n仍可用 Push-to-talk 熱鍵說話；修正設定後按「重試啟動」。');
+  } else {
+    wwShowError('');
+  }
+  if (typeof state.accessKeyConfigured === 'boolean') {
+    wwEls.keyStatus.textContent = state.accessKeyConfigured ? '✓ 已加密儲存（內容不顯示）' : '尚未設定';
+    wwEls.keyStatus.className = 'key-status' + (state.accessKeyConfigured ? ' ok' : '');
+    wwEls.key.placeholder = state.accessKeyConfigured ? '已儲存 · 要更換才需重新輸入' : '貼上 AccessKey';
+  }
+  if (typeof state.sensitivity === 'number') {
+    wwEls.sensitivity.value = state.sensitivity;
+    wwEls.sensValue.textContent = Number(state.sensitivity).toFixed(2);
+  }
+  if (typeof state.deviceIndex === 'number') wwEls.device.value = String(state.deviceIndex);
+  wwEls.keywordPath.textContent = state.keywordConfigured ? '已選自訂 .ppn 檔' : '內建關鍵字';
+}
+
+async function wwSetConfig(partial) {
+  if (!wwApiReady) return;
+  const res = await window.api.setWakeWordConfig(partial);
+  if (res && res.ok === false) wwShowError(res.error || res.code || '設定失敗');
+  else renderWakeWord(res);
+}
+
+wwEls.enable.addEventListener('change', () => wwSetConfig({ wakeWordEnabled: wwEls.enable.checked }));
+wwEls.sensitivity.addEventListener('input', () => {
+  wwEls.sensValue.textContent = Number(wwEls.sensitivity.value).toFixed(2);
+});
+wwEls.sensitivity.addEventListener('change', () => {
+  wwSetConfig({ wakeWordSensitivity: parseFloat(wwEls.sensitivity.value) });
+});
+wwEls.device.addEventListener('change', () => {
+  wwSetConfig({ wakeWordDeviceIndex: parseInt(wwEls.device.value, 10) });
+});
+wwEls.reveal.addEventListener('click', () => {
+  wwEls.key.type = wwEls.key.type === 'password' ? 'text' : 'password';
+});
+wwEls.saveKey.addEventListener('click', async () => {
+  const raw = wwEls.key.value.trim();
+  if (!raw) { wwShowError('請先貼上 Picovoice AccessKey'); return; }
+  if (!wwApiReady) return;
+  const res = await window.api.setWakeWordAccessKey(raw);
+  wwEls.key.value = '';
+  wwEls.key.type = 'password';
+  if (res && res.ok === false) wwShowError(res.error || '儲存失敗');
+  else { renderWakeWord(res); showResult('ok', '✓ AccessKey 已加密儲存。'); }
+});
+wwEls.clearKey.addEventListener('click', async () => {
+  if (!confirm('確定清除 Picovoice AccessKey？喚醒詞會停止運作。')) return;
+  if (!wwApiReady) return;
+  const res = await window.api.clearWakeWordAccessKey();
+  renderWakeWord(res);
+});
+wwEls.retry.addEventListener('click', async () => {
+  if (!wwApiReady) return;
+  wwEls.statusText.textContent = '重試中⋯';
+  renderWakeWord(await window.api.retryWakeWord());
+});
+wwEls.chooseKeyword.addEventListener('click', async () => {
+  if (!wwApiReady) return;
+  const res = await window.api.chooseWakeWordKeyword();
+  if (res && res.ok === false && res.code !== 'CANCELLED') wwShowError(res.error || '選擇失敗');
+  else if (res && res.ok !== false) renderWakeWord(res);
+});
+
+async function initWakeWord() {
+  if (!wwApiReady) {
+    wwEls.statusText.textContent = '（預覽模式）';
+    return;
+  }
+  try {
+    renderWakeWord(await window.api.getWakeWordState());
+    const devices = await window.api.listWakeWordDevices();
+    const list = Array.isArray(devices) ? devices : (devices && devices.devices) || [];
+    if (list.length) {
+      const current = wwEls.device.value;
+      wwEls.device.innerHTML = '<option value="-1">系統預設</option>';
+      list.forEach((d, i) => {
+        const opt = document.createElement('option');
+        opt.value = String(d.index ?? i);
+        opt.textContent = d.label || d.name || `裝置 ${d.index ?? i}`;
+        wwEls.device.appendChild(opt);
+      });
+      wwEls.device.value = current;
+    }
+  } catch (e) {
+    wwShowError('讀取喚醒詞狀態失敗：' + e.message);
+  }
+  if (typeof window.api.onWakeWordState === 'function') {
+    window.api.onWakeWordState((state) => renderWakeWord(state));
+  }
+}
+
+// ============================================================
+// CONNECTORS (#27) — 外部服務憑證與健康檢查
+//   契約：listConnectors → {ok, connectors:[{id,name,configured,tools:[{name,risk}]}]}
+//        setConnectorCredential(id, token) / clearConnectorCredential(id)
+//        checkConnectorHealth(id)
+//   安全：token 只送一次，絕不回顯、不存偏好。
+// ============================================================
+const connList = $('connectorList');
+const connNote = $('connNote');
+const connApiReady = !!(window.api && typeof window.api.listConnectors === 'function');
+
+function connShowNote(kind, msg) {
+  if (!msg) { connNote.className = 'test-result'; connNote.textContent = ''; return; }
+  connNote.className = `test-result show ${kind}`;
+  connNote.textContent = msg;
+}
+
+function renderConnectors(connectors) {
+  connList.innerHTML = '';
+  if (!connectors || !connectors.length) {
+    connList.innerHTML = '<div class="hint">目前沒有可用的 connector。</div>';
+    return;
+  }
+  for (const c of connectors) {
+    const card = document.createElement('div');
+    card.className = 'conn-card';
+
+    const head = document.createElement('div');
+    head.className = 'conn-head';
+    const name = document.createElement('div');
+    name.className = 'conn-name';
+    name.textContent = c.name || c.id;
+    const pill = document.createElement('span');
+    pill.className = 'conn-pill' + (c.configured ? ' on' : '');
+    pill.textContent = c.configured ? 'CONNECTED' : 'NOT SET';
+    head.appendChild(name);
+    head.appendChild(pill);
+    card.appendChild(head);
+
+    const tools = document.createElement('div');
+    tools.className = 'conn-tools';
+    for (const t of c.tools || []) {
+      const chip = document.createElement('span');
+      const risky = t.risk && t.risk !== 'read';
+      chip.className = 'conn-tool' + (risky ? ' write' : '');
+      chip.textContent = `${t.name}${risky ? ' · 需確認' : ''}`;
+      tools.appendChild(chip);
+    }
+    card.appendChild(tools);
+
+    const row = document.createElement('div');
+    row.className = 'key-row';
+    const input = document.createElement('input');
+    input.type = 'password';
+    input.autocomplete = 'off';
+    input.placeholder = c.configured ? '已儲存 · 要更換才需重新輸入' : `貼上 ${c.name || c.id} token`;
+    row.appendChild(input);
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'btn-primary';
+    saveBtn.style.borderRadius = 'var(--r-field)';
+    saveBtn.textContent = '儲存';
+    row.appendChild(saveBtn);
+    card.appendChild(row);
+
+    const actions = document.createElement('div');
+    actions.className = 'actions-row';
+    actions.style.marginTop = '10px';
+    const healthBtn = document.createElement('button');
+    healthBtn.className = 'btn-secondary';
+    healthBtn.textContent = '測試連線';
+    actions.appendChild(healthBtn);
+    const clearBtn = document.createElement('button');
+    clearBtn.className = 'btn-danger';
+    clearBtn.textContent = '清除憑證';
+    actions.appendChild(clearBtn);
+    card.appendChild(actions);
+
+    const result = document.createElement('div');
+    result.className = 'conn-result';
+    card.appendChild(result);
+
+    const showRes = (kind, msg) => {
+      result.className = `conn-result show ${kind}`;
+      result.textContent = msg;
+    };
+
+    saveBtn.addEventListener('click', async () => {
+      const raw = input.value.trim();
+      if (!raw) { showRes('err', '請先貼上 token'); return; }
+      const res = await window.api.setConnectorCredential(c.id, raw);
+      input.value = '';
+      if (res && res.ok === false) { showRes('err', res.error || res.code || '儲存失敗'); return; }
+      showRes('ok', '✓ 憑證已加密儲存。建議按「測試連線」確認。');
+      refreshConnectors();
+    });
+    healthBtn.addEventListener('click', async () => {
+      showRes('ok', '⟳ 檢查中⋯');
+      const res = await window.api.checkConnectorHealth(c.id);
+      if (res && res.ok) {
+        const who = res.account || res.user || res.workspace || '';
+        showRes('ok', '✓ 連線正常' + (who ? `：${who}` : ''));
+      } else {
+        showRes('err', '✗ ' + ((res && (res.error || res.code)) || '連線失敗'));
+      }
+    });
+    clearBtn.addEventListener('click', async () => {
+      if (!confirm(`確定清除 ${c.name || c.id} 的憑證？`)) return;
+      const res = await window.api.clearConnectorCredential(c.id);
+      if (res && res.ok === false) { showRes('err', res.error || '清除失敗'); return; }
+      showRes('err', '憑證已清除。');
+      refreshConnectors();
+    });
+
+    connList.appendChild(card);
+  }
+}
+
+async function refreshConnectors() {
+  if (!connApiReady) {
+    connList.innerHTML = '<div class="hint">（預覽模式）</div>';
+    return;
+  }
+  try {
+    const res = await window.api.listConnectors();
+    if (res && res.ok === false) { connShowNote('err', res.error || '載入失敗'); return; }
+    renderConnectors((res && res.connectors) || []);
+  } catch (e) {
+    connShowNote('err', '載入 connector 失敗：' + e.message);
+  }
+}
+
+function initConnectors() {
+  refreshConnectors();
+  if (connApiReady && typeof window.api.onConnectorEvent === 'function') {
+    // 憑證/設定變動之外的事件也會進來；列表狀態跟著刷新即可
+    window.api.onConnectorEvent(() => refreshConnectors());
+  }
+}
+
 // 初始化
 loadAll();
 initWorkspace();
 initRemote();
 initModels();
 loadHotkey();
+initWakeWord();
+initConnectors();

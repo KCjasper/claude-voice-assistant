@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <title>Voice Assistant</title>
+<link rel="stylesheet" href="glass.css">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -30,6 +31,9 @@
     <div class="speaker" id="transcriptSpeaker">你說</div>
     <div id="transcriptBody"></div>
   </div>
+
+  <!-- Connector 寫入確認卡 (#27)：AI 要動外部服務時逐次確認 -->
+  <div class="confirm-stack" id="confirmStack"></div>
 
   <!-- 底部控制列 -->
   <div class="controls">

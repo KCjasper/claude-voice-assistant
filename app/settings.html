@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <title>Voice Assistant — Settings</title>
+<link rel="stylesheet" href="glass.css">
 <link rel="stylesheet" href="settings.css">
 </head>
 <body>
@@ -211,6 +212,62 @@
       </div>
     </div>
 
+    <!-- 區段：喚醒詞 (#26) -->
+    <div class="section">
+      <div class="section-title">WAKE WORD · 喚醒詞</div>
+
+      <div class="field">
+        <label class="checkbox-label">
+          <input type="checkbox" id="wwEnable">
+          <span>啟用「Hey Claude」語音喚醒</span>
+        </label>
+        <div class="hint">完全離線偵測：麥克風聲音只在本機 Porcupine 引擎的記憶體中處理，不寫檔、不上傳。</div>
+      </div>
+
+      <div class="field">
+        <label>狀態</label>
+        <div class="ww-status" id="wwStatusRow">
+          <span class="status-dot" id="wwStatusDot"></span>
+          <span id="wwStatusText">載入中⋯</span>
+        </div>
+        <div class="test-result" id="wwError"></div>
+      </div>
+
+      <div class="field">
+        <label>Picovoice AccessKey <span class="hint">個人免費 · console.picovoice.ai</span></label>
+        <div class="key-row">
+          <input type="password" id="wwAccessKey" placeholder="貼上 AccessKey" autocomplete="off">
+          <button class="icon-btn" id="wwReveal" title="顯示 / 隱藏">👁</button>
+        </div>
+        <div class="key-status" id="wwKeyStatus">尚未設定</div>
+      </div>
+
+      <div class="actions-row">
+        <button class="btn-primary" id="wwSaveKey">儲存 Key</button>
+        <button class="btn-secondary" id="wwRetry">重試啟動</button>
+        <button class="btn-danger" id="wwClearKey">清除 Key</button>
+      </div>
+
+      <div class="field" style="margin-top:14px;">
+        <label>麥克風</label>
+        <select id="wwDevice"><option value="-1">系統預設</option></select>
+      </div>
+
+      <div class="field">
+        <label>靈敏度 <span class="hint" id="wwSensValue">0.55</span></label>
+        <input type="range" id="wwSensitivity" min="0" max="1" step="0.05" value="0.55">
+        <div class="hint">越高越容易喚醒，誤觸發也會變多。</div>
+      </div>
+
+      <div class="field">
+        <label>自訂喚醒詞檔 (.ppn) <span class="hint">選用 · 可在 Picovoice Console 訓練「Hey Claude」</span></label>
+        <div class="key-row">
+          <div class="static-value" id="wwKeywordPath" style="flex:1;">內建關鍵字</div>
+          <button class="btn-secondary" id="wwChooseKeyword">選擇…</button>
+        </div>
+      </div>
+    </div>
+
     <!-- 區段：網路搜尋 -->
     <div class="section">
       <div class="section-title">WEB SEARCH</div>
@@ -291,6 +348,16 @@
       </div>
 
       <div class="test-result" id="remoteNote"></div>
+    </div>
+
+    <!-- 區段：外部服務 (#27) -->
+    <div class="section">
+      <div class="section-title">CONNECTORS · 外部服務</div>
+      <div class="hint" style="margin-bottom:12px;">AI 可透過 connector 操作外部服務（例如 Notion）。所有「寫入」動作都需要你在浮窗逐次確認，不會自動執行。</div>
+      <div id="connectorList" class="connector-list">
+        <div class="hint">載入中⋯</div>
+      </div>
+      <div class="test-result" id="connNote"></div>
     </div>
 
     <!-- 區段 4：用量上限 -->

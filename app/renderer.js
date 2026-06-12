@@ -419,6 +419,126 @@ function errorMessageFor(res) {
   }
 }
 
+// ============================================================
+// Connector 寫入確認卡 (#27)
+//   事件：{type:'confirmation-required', confirmation:{id,connectorId,toolName,
+//          summary:{parentPageId?,title?,contentPreview?},requestId,createdAt,expiresAt}}
+//        {type:'action-completed', connectorId, toolName, confirmationId, result}
+//        {type:'confirmation-rejected', confirmationId}
+//   原則：只有使用者顯式點「核准」才呼叫 approveConnectorAction。
+// ============================================================
+const confirmStack = document.getElementById('confirmStack');
+const confirmCards = new Map(); // id -> { el, timer }
+
+function confirmRemove(id, delayMs = 0) {
+  const entry = confirmCards.get(id);
+  if (!entry) return;
+  confirmCards.delete(id);
+  clearInterval(entry.timer);
+  const drop = () => { entry.el.classList.add('leaving'); setTimeout(() => entry.el.remove(), 280); };
+  if (delayMs) setTimeout(drop, delayMs); else drop();
+}
+
+function confirmRenderCard(c) {
+  if (!c || !c.id || confirmCards.has(c.id)) return;
+  const el = document.createElement('div');
+  el.className = 'confirm-card';
+
+  const summary = c.summary || {};
+  const fields = [];
+  if (summary.title) fields.push(['標題', summary.title]);
+  if (summary.parentPageId) fields.push(['目標頁面', summary.parentPageId]);
+  const fieldsHtml = fields.map(([k, v]) =>
+    `<div class="cc-row"><span class="cc-k">${k}</span><span class="cc-v"></span></div>`).join('');
+
+  el.innerHTML = `
+    <div class="cc-head">
+      <span class="cc-badge">需要確認</span>
+      <span class="cc-action"></span>
+      <span class="cc-ttl"></span>
+    </div>
+    ${fieldsHtml}
+    ${summary.contentPreview ? '<div class="cc-preview"></div>' : ''}
+    <div class="cc-actions">
+      <button class="cc-btn approve">核准</button>
+      <button class="cc-btn reject">拒絕</button>
+    </div>
+    <div class="cc-result"></div>
+  `;
+  // 內容一律用 textContent 塞（防注入）
+  el.querySelector('.cc-action').textContent = `${c.connectorId} · ${c.toolName}`;
+  el.querySelectorAll('.cc-v').forEach((node, i) => { node.textContent = fields[i][1]; });
+  if (summary.contentPreview) el.querySelector('.cc-preview').textContent = summary.contentPreview;
+
+  const ttlEl = el.querySelector('.cc-ttl');
+  const approveBtn = el.querySelector('.approve');
+  const rejectBtn = el.querySelector('.reject');
+  const resultEl = el.querySelector('.cc-result');
+
+  const setBusy = (busy) => { approveBtn.disabled = busy; rejectBtn.disabled = busy; };
+  const showResult = (kind, msg, keepMs) => {
+    resultEl.className = 'cc-result show ' + kind;
+    resultEl.textContent = msg;
+    if (keepMs) confirmRemove(c.id, keepMs);
+  };
+
+  const tick = () => {
+    const left = Math.max(0, Math.floor(((c.expiresAt || 0) - Date.now()) / 1000));
+    ttlEl.textContent = left > 0 ? `${left}s` : '已過期';
+    if (left <= 0) {
+      setBusy(true);
+      showResult('err', '此確認已過期，AI 需要重新發起。', 4000);
+    }
+  };
+  const timer = setInterval(tick, 1000);
+  tick();
+
+  approveBtn.addEventListener('click', async () => {
+    setBusy(true);
+    showResult('wait', '執行中⋯');
+    const res = await window.api.approveConnectorAction(c.id);
+    if (res && res.ok) showResult('ok', '✓ 已核准並執行完成。', 4500);
+    else if (res && res.code === 'CONFIRMATION_NOT_FOUND') showResult('err', '此確認已失效（過期或已處理）。', 4000);
+    else { showResult('err', '✗ ' + ((res && (res.error || res.code)) || '執行失敗'), 6000); }
+  });
+  rejectBtn.addEventListener('click', async () => {
+    setBusy(true);
+    await window.api.rejectConnectorAction(c.id);
+    showResult('err', '已拒絕，AI 不會執行這個動作。', 3000);
+  });
+
+  confirmCards.set(c.id, { el, timer });
+  confirmStack.appendChild(el);
+}
+
+async function initConnectorConfirmations() {
+  if (!window.api || typeof window.api.getPendingConnectorConfirmations !== 'function') return;
+  try {
+    const res = await window.api.getPendingConnectorConfirmations();
+    const list = Array.isArray(res) ? res : (res && (res.confirmations || res.pending)) || [];
+    list.forEach(confirmRenderCard);
+  } catch {}
+  if (typeof window.api.onConnectorEvent === 'function') {
+    window.api.onConnectorEvent((ev) => {
+      if (!ev) return;
+      if (ev.type === 'confirmation-required') confirmRenderCard(ev.confirmation);
+      else if (ev.type === 'confirmation-rejected') confirmRemove(ev.confirmationId, 0);
+      else if (ev.type === 'action-completed' && ev.confirmationId) {
+        // 卡片若還在（理論上核准流程已處理），補上結果並收掉
+        const entry = confirmCards.get(ev.confirmationId);
+        if (entry) {
+          const ok = ev.result && ev.result.ok;
+          const resultEl = entry.el.querySelector('.cc-result');
+          resultEl.className = 'cc-result show ' + (ok ? 'ok' : 'err');
+          resultEl.textContent = ok ? '✓ 已執行完成。' : ('✗ ' + ((ev.result && ev.result.error) || '執行失敗'));
+          confirmRemove(ev.confirmationId, 4000);
+        }
+      }
+    });
+  }
+}
+
 // 初始狀態
 setState('idle', { clearTranscript: true });
 refreshMeter();
+initConnectorConfirmations();
