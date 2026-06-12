@@ -52,7 +52,7 @@
 ## 我的待辦（前端）— 2026-06-13 更新
 - **🎨 Liquid Glass 全面改版進行中**（KC 指定的新設計語言，提示詞存於 `app/glass.css` 檔頭註解）：
   - ✅ 階段 1：`glass.css` 設計系統 + 浮窗 `styles.css` + 設定頁 `settings.css` 玻璃化（詳見下方日誌）
-  - ⬜ 階段 2：Ops Center 全螢幕 `fullscreen.*` 玻璃化
+  - ✅ 階段 2：Ops Center 全螢幕 `fullscreen.*` 玻璃化（詳見下方日誌）
   - ⬜ 階段 3：手機客戶端 `app/mobile/styles.css` 對齊新設計語言
 - **#26 喚醒詞設定 UI — ✅ 完成**（詳見下方日誌）
 - **#27 Connector 設定與寫入確認 UI — ✅ 完成**（詳見下方日誌）
@@ -68,6 +68,16 @@
   2. `input[type=range]`（說話速度、靈敏度）UA 白軌道：改自訂 `::-webkit-slider-runnable-track`（內凹玻璃）+ `::-webkit-slider-thumb`(玻璃拇指 + hover 放大)。
 - **已驗證**：111/111 tests pass；`node --check` 過;瀏覽器 mock 預覽逐區段截圖確認（settings 全區段、浮窗 idle/listening）。
 - **眉角**：HTML 引入順序必須 `glass.css` → 視窗自己的 css（變數在 glass.css 定義）。瀏覽器預覽 `renderer.js` 沒 `window.api` 會中斷屬既有行為，CSS 驗證不受影響。
+
+## 📒 工作日誌 · 🎨 Liquid Glass 改版階段 2 — Ops Center（2026-06-13 完成）
+> `fullscreen.css` 全面重寫成液態玻璃；`fullscreen.js` 完全沒動（class 名稱/狀態機全保留）。
+
+- **`fullscreen.html`**：只加一行 `<link href="glass.css">`（必須在 fullscreen.css 之前）。
+- **大 Orb**：實心藍球 → 水晶玻璃球（浮窗 Orb 放大版：透明內核 + 冰藍折射緣 + 雙高光點）。四態沿用 `body.idle/listening/thinking/speaking`：thinking 改成「玻璃球內部半透明 conic 折射光旋轉」（不再是實心紫藍 conic）；動畫全部改用 glass.css 的 `lg-*` keyframes。
+- **面板**：左右兩片 `.panel` 改成浮動玻璃（scrim + 上緣鏡面高光 + 內部柔光 + `::before` 折射掃光層 + `--depth` 景深）。**刻意不用 backdrop-filter**：transparent Electron 視窗上會出黑塊（浮窗 `.assistant` 同理）。`.panel > *` 要 `z-index:1` 蓋過掃光層。
+- **其餘**：topbar 按鈕/訊息卡/任務步驟/tool chips/kbd 鍵帽全部換玻璃材質；藍色系 `#60a5fa` 全面換成 glass.css 冰川藍變數。
+- **已驗證**：瀏覽器預覽 mock 出對話/任務步驟/工具 chips，截圖確認 thinking + listening 兩態；`node --check` 不適用（純 CSS/HTML）。
+- **眉角**：glass.css 沒被任何 HTML 用到 `.glass-panel` class——它是變數庫 + 公用 class 庫，各視窗 css 用同配方自己定義材質（因為各有 app-region / 佈局差異）。
 
 ## 📒 工作日誌 · #26 喚醒詞設定 UI（2026-06-13 完成）
 > 給後端同事：設定頁加了 WAKE WORD 區段（VOICE 與 WEB SEARCH 之間），已接你 #12 的全部 IPC。
