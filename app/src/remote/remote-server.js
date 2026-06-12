@@ -200,7 +200,7 @@ class RemoteServer {
     response.setHeader('Referrer-Policy', 'no-referrer');
     response.setHeader(
       'Content-Security-Policy',
-      "default-src 'self'; connect-src 'self' ws: wss:; media-src 'self' blob:; img-src 'self' data:; style-src 'self'; script-src 'self'"
+      "default-src 'self'; connect-src 'self' ws: wss:; media-src 'self' blob: data:; img-src 'self' data:; style-src 'self'; script-src 'self'"
     );
   }
 

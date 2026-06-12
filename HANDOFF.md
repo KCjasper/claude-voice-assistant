@@ -263,3 +263,33 @@ https://github.com/KCjasper/claude-voice-assistant（公開）
 - Public proxy browser origins are accepted only when the forwarded host arrives from a loopback socket. Pairing/session token authentication remains mandatory for WebSocket access.
 - Added Cloudflare Quick Tunnel documentation and warnings: it is a development/testing service with no production SLA, the URL is Internet-accessible, and users must stop it after use. The backend does not download or bundle an unofficial tunnel binary.
 - Added LAN selection, QR metadata, real QR generation, tunnel discovery/start/timeout/stop/race, trusted proxy-origin, IPC, preload, full backend regression, dependency audit, and Electron startup coverage. No frontend UI files were changed.
+
+## Full application test log (2026-06-13)
+
+### Repository and automated verification
+- Synced `main` with `origin/main` before testing; both started at `3c51a75`.
+- `node --test test/*.test.js`: 111/111 tests passed.
+- JavaScript syntax checks passed for 44 application files.
+- Duplicate HTML ID checks passed for floating, settings, fullscreen, and mobile pages.
+- `npm audit --audit-level=moderate`: 0 vulnerabilities.
+- `git diff --check`: passed.
+
+### Electron runtime verification
+- Launched Electron with an isolated user-data directory and exercised the floating, settings, and fullscreen windows through the Chrome DevTools Protocol.
+- All required DOM controls were present, preload APIs were exposed, and no horizontal viewport overflow or renderer exception was detected.
+- Verified preferences, workspace state, the registered `Control+Space` hotkey, disabled wake-word state, Notion connector metadata, remote protocol v1, and model options through live IPC.
+- Visual captures were reviewed at 340x520 (floating), 520x720 (settings), and 1920x1032 (fullscreen). White controls in the transparent fullscreen capture are a DevTools screenshot artifact; computed styles and the live window state were correct.
+
+### Remote and mobile runtime verification
+- Started the embedded remote server on port 8787 and verified `/health`, mobile static assets, two LAN access entries, PNG QR data URLs, and fragment-based pairing URLs.
+- Completed a real WebSocket upgrade (HTTP 101), one-time pairing-token exchange, `auth.ready`, session-token issuance, authoritative `session.state`, and ping/pong.
+- Tested the mobile client in isolated Chrome at 375x812. Manual pairing reached the assistant screen, stored a 24-hour session token, and showed no viewport overflow.
+- Fixed backend issue #29 by allowing `data:` in the tightly scoped CSP `media-src`. The live response now returns `media-src 'self' blob: data:`, and a clean browser rerun produced no media CSP violation.
+
+### Findings handed to frontend
+- Issue #28: the mobile app does not parse the QR URL fragment on initial load and does not reconnect from the stored session after reload. Manual entry works, so the backend token and WebSocket paths are healthy.
+- Issue #30: the mobile static app has no favicon, causing `/favicon.ico` to return 404 and pollute the browser console.
+
+### Environment-limited coverage
+- Physical microphone capture, Whisper/CUDA transcription, Porcupine wake-word detection, and real speaker playback require compatible hardware and were not exercised end to end.
+- Live Claw Router, ElevenLabs, Notion, and public Cloudflare tunnel calls require external credentials or services and were not invoked. Their local validation, lifecycle, cancellation, and error paths remain covered by the automated suite.

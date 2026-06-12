@@ -114,6 +114,11 @@ test('serves static assets and rejects unauthenticated WebSocket upgrades', asyn
 
   const page = await fetch(base);
   assert.equal(page.status, 200);
+  const csp = page.headers.get('content-security-policy');
+  assert.match(csp, /default-src 'self'/);
+  assert.match(csp, /connect-src 'self' ws: wss:/);
+  assert.match(csp, /media-src 'self' blob: data:/);
+  assert.match(csp, /script-src 'self'/);
   assert.match(await page.text(), /Remote/);
   assert.equal((await fetch(`${base}/health`)).status, 200);
   assert.equal(await rejectedStatus(`${base.replace('http', 'ws')}/ws`), 401);
