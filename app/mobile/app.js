@@ -439,5 +439,25 @@
     }
   });
 
-  showScreen('pairing');
+  // ====================================================================
+  // 啟動：解析 QR 配對 URL（#28）
+  //   桌面 QR = http://<host>:<port>/#token=<pairing>，本頁就是由那台
+  //   server 供檔，所以 server 即 location.host。
+  //   token 讀完立即從網址列清掉（避免留在歷史/截圖）；沒 token 但有
+  //   既存 session token 也自動重連；都沒有才停在手動配對表單。
+  // ====================================================================
+  (function autoPairFromUrl() {
+    showScreen('pairing');
+    const tok = (location.hash.match(/[#&]token=([^&\s]+)/) || [])[1] || '';
+    if (location.hash) {
+      try { history.replaceState(null, '', location.pathname + location.search); } catch {}
+    }
+    if (!/^https?:$/.test(location.protocol) || !location.host) return; // file:// 等情況走手動
+    const server = location.host;
+    const session = client.savedSessionFor(server);
+    if (!tok && !session) return;
+    serverInput.value = server;
+    setPairingStatus(tok ? '已讀取 QR 配對碼，連線中⋯' : '使用既存連線憑證重連⋯', 'ok');
+    doConnect(server, tok ? decodeURIComponent(tok) : '');
+  })();
 })();
