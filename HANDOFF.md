@@ -53,7 +53,8 @@
 - **🎨 Liquid Glass 全面改版進行中**（KC 指定的新設計語言，提示詞存於 `app/glass.css` 檔頭註解）：
   - ✅ 階段 1：`glass.css` 設計系統 + 浮窗 `styles.css` + 設定頁 `settings.css` 玻璃化（詳見下方日誌）
   - ✅ 階段 2：Ops Center 全螢幕 `fullscreen.*` 玻璃化（詳見下方日誌）
-  - ⬜ 階段 3：手機客戶端 `app/mobile/styles.css` 對齊新設計語言
+  - ✅ 階段 3：手機客戶端 `app/mobile/styles.css` 對齊新設計語言（詳見下方日誌）
+  - **改版完成**。待 KC 實機過目；如要微調直接說哪個視窗哪裡不喜歡。
 - **#26 喚醒詞設定 UI — ✅ 完成**（詳見下方日誌）
 - **#27 Connector 設定與寫入確認 UI — ✅ 完成**（詳見下方日誌）
 
@@ -78,6 +79,15 @@
 - **其餘**：topbar 按鈕/訊息卡/任務步驟/tool chips/kbd 鍵帽全部換玻璃材質；藍色系 `#60a5fa` 全面換成 glass.css 冰川藍變數。
 - **已驗證**：瀏覽器預覽 mock 出對話/任務步驟/工具 chips，截圖確認 thinking + listening 兩態；`node --check` 不適用（純 CSS/HTML）。
 - **眉角**：glass.css 沒被任何 HTML 用到 `.glass-panel` class——它是變數庫 + 公用 class 庫，各視窗 css 用同配方自己定義材質（因為各有 app-region / 佈局差異）。
+
+## 📒 工作日誌 · 🎨 Liquid Glass 改版階段 3 — 手機客戶端（2026-06-13 完成）
+> `app/mobile/styles.css` 全面重寫；HTML/JS 零更動（class 全保留）。
+
+- **token 內嵌**：`app/mobile/` 由後端 RemoteServer 靜態供檔且擋路徑穿越，**不能** `<link>` 上層 `glass.css`，所以設計 token（冰川藍/墨色階/玻璃材質）複製進 `:root`。改 glass.css 變數時記得同步這裡。
+- **轉換**：配對卡 → 多層玻璃面板（含 `::before` 折射掃光，子元素 `z-index:1`）；Orb / brand-orb / 麥克風鈕 → 水晶玻璃球；主按鈕 → 冰白漸層膠囊（深色字 `#0E1626`）；泡泡（you/claude/tool）→ 玻璃卡。
+- **語意色霧化**：連線點 ok/warn/danger 用霧化色票；**錄音中改霜紅玻璃**（保留紅色語意但不刺眼）。
+- **保留的行動端眉角**：input `font-size:16px` 防 iOS 縮放、safe-area inset、`position:fixed` 防橡皮筋、`backdrop-filter` 在手機瀏覽器 OK（body 有實色底，沒有 Electron 透明視窗問題）。
+- **已驗證**：375×812 viewport 配對畫面 + 示範模式助理畫面截圖；speaking 態 + 三種泡泡 + 錄音鈕 DOM 注入驗證。
 
 ## 📒 工作日誌 · #26 喚醒詞設定 UI（2026-06-13 完成）
 > 給後端同事：設定頁加了 WAKE WORD 區段（VOICE 與 WEB SEARCH 之間），已接你 #12 的全部 IPC。
