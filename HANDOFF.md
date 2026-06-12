@@ -80,6 +80,14 @@
 - **已驗證**：瀏覽器預覽 mock 出對話/任務步驟/工具 chips，截圖確認 thinking + listening 兩態；`node --check` 不適用（純 CSS/HTML）。
 - **眉角**：glass.css 沒被任何 HTML 用到 `.glass-panel` class——它是變數庫 + 公用 class 庫，各視窗 css 用同配方自己定義材質（因為各有 app-region / 佈局差異）。
 
+## 📒 工作日誌 · #28 #30 手機端配對修復（2026-06-13 完成）
+> 兩個都在 `app/mobile/`，HTML/JS 小修。
+
+- **#28 QR fragment 自動配對**：`app.js` 末尾新增 `autoPairFromUrl()`（取代裸的 `showScreen('pairing')`）。載入時解析 `location.hash` 的 `#token=`、server 取 `location.host`、**立即 `history.replaceState` 清掉 fragment**（token 不留網址列）、自動 `doConnect`；無 token 但有既存 session token 也自動重連；都沒有才停在手動表單。失敗路徑沿用既有 `auth` error handler（回配對畫面 + 明確錯誤）。`file://` 等非 http(s) 直接走手動。
+- **#30 favicon**：`favicon.png`（64×64 玻璃球，純 Python zlib 手寫產生）+ `index.html` 加 `<link rel="icon">` / `apple-touch-icon`。有宣告 icon 後 Chrome 不會再去要 `/favicon.ico`。
+- **已驗證**（瀏覽器預覽）：帶 `#token=` 載入 → serverInput 自動填、fragment 清空、發起連線、失敗回配對畫面含錯誤字；無 token 無 session → 安靜停手動表單；favicon 200 `image/png`。
+- **眉角**：瀏覽器對 `app.js` 子資源有 heuristic cache，測試時 HTML cache-bust 不會連帶 bust 它——驗證要對 script URL 加 `?v=`。真機若改版後行為怪，先強制重新整理。
+
 ## 📒 工作日誌 · 🎨 Liquid Glass 改版階段 3 — 手機客戶端（2026-06-13 完成）
 > `app/mobile/styles.css` 全面重寫；HTML/JS 零更動（class 全保留）。
 
