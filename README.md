@@ -61,19 +61,67 @@
 
 `main.js` / `preload.js`（前後端契約）/ `src/` 為核心邏輯（用量、STT、工具安全），UI 在 `renderer.js`、`fullscreen.*`、`settings.*`。檔案工具一律受 `src/config` 的工作資料夾安全模型約束。
 
-## 開發 / 執行
+## 🚀 安裝與使用（下載後怎麼用）
 
-需要 [Node.js](https://nodejs.org/) 18+。GPU 加速需 NVIDIA 顯卡 + 新版驅動。
+### 1. 先準備這些
+
+- **Windows** 電腦
+- **[Node.js](https://nodejs.org/) 18 以上** — 到官網下載 LTS 版裝好即可
+- **Claw Router API Key**（**必填**，這是 AI 的大腦）— 到 [clawrouter.com](https://clawrouter.com) 註冊帳號、儲值、建立一支 key（格式像 `sk-claw-...`）
+- *(選用)* **NVIDIA 顯卡** — 有的話語音辨識走 GPU 加速；沒有也能用，會自動退回 CPU
+
+### 2. 下載與安裝
+
+打開終端機（PowerShell 或 Git Bash），依序執行：
 
 ```bash
-cd app
+git clone https://github.com/KCjasper/claude-voice-assistant.git
+cd claude-voice-assistant/app
 npm install
-npm start      # 啟動 app
-npm test       # 跑後端 / 模組測試（node:test）
 ```
 
-首次使用：開啟後點浮窗的 ⚙ → 貼上 Claw Router API Key → Test Connection。
-（搜尋、ElevenLabs 等為選用，需各自在設定頁貼上對應 key。）
+### 3. 第一次啟動
+
+```bash
+npm start
+```
+
+- **第一次啟動會自動下載語音辨識引擎（Whisper）與模型**，約數百 MB，請保持連網、耐心等它跑完。只下載這一次，之後啟動很快；檔案存在系統 userData，不在專案資料夾裡。
+- 啟動後，桌面右下角會出現一顆**液態玻璃浮窗**。
+
+### 4. 設定（第一次必做）
+
+1. 點浮窗右下角的 **⚙ 齒輪** 打開設定頁。
+2. 在 **API CONNECTION** 貼上你的 Claw Router API Key → 按 **Test Connection** 確認連得通。
+3. *(選用)* 其他功能各自在設定頁貼對應 key：
+   - **網路搜尋** — Tavily / Brave / Google 三選一
+   - **ElevenLabs 真人語音** — 貼 ElevenLabs key
+   - **Hey Claude 喚醒詞** — 貼 Picovoice AccessKey（[console.picovoice.ai](https://console.picovoice.ai) 免費申請）
+
+> 所有 key 都以系統加密存在本機，**不會**寫進程式碼或外流。
+
+### 5. 開始用
+
+- **按住熱鍵說話** — 預設 `Ctrl+Shift+Space`（可在設定改），講完放開，AI 處理後用語音念回給你。
+- **喊「Hey Claude」** — 設好 Picovoice key 後，免按鍵就能喚醒。
+- **看 AI 在做什麼** — 點浮窗那顆球，展開全螢幕 **Ops Center**，即時顯示對話 / 任務 / 用到的工具 / 花費。
+- **限定 AI 能動的範圍** — 設定頁 **WORKSPACE** 區段選工作資料夾，AI 讀寫檔案只會在裡面。
+
+### 6. *(選用)* 用手機遠端操作
+
+1. 桌面設定頁 → **REMOTE** 區段 → 開啟手機遠端。
+2. 手機與電腦連**同一個 Wi-Fi**，用手機相機掃畫面上的 QR。
+3. 手機瀏覽器開啟遙控介面，對著手機講話就能用。
+
+## 開發者指令
+
+```bash
+npm test                 # 跑測試（node:test，111 項）
+node --check <檔案>       # 語法檢查單一檔
+```
+
+- 改 `renderer` / `settings` / `fullscreen` 的 HTML/CSS/JS → 重開該視窗即生效；改 `main.js` 或 `src/` → 要完整重啟。
+- **重啟前先關掉舊的 app**（有單一實例鎖，不關的話跑的還是舊版）。
 
 ## 專案結構
 
