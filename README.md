@@ -37,7 +37,7 @@
 
 ## 開發進度
 
-**規劃功能全部完成** — GitHub Issues #1–#27 全數結案。
+**v1 規劃功能全部完成** — GitHub Issues #1–#30 全數結案。**v2 新一輪規劃（#31–#49）已就緒、尚未動工**（見下方 Roadmap）。
 
 - [x] Electron 骨架 + 液態玻璃 UI（浮窗 / 全螢幕 / 設定）
 - [x] 設定頁 + API Key 加密儲存
@@ -56,6 +56,21 @@
 - [x] 外部服務 connector（Notion，寫入逐次確認）
 
 > 程式碼與單元測試（111 項）已完整覆蓋；手機遠端與喚醒詞的「實機端到端」smoke test 待實際設備驗證。
+
+## 🗺 Roadmap · v2 新一輪規劃（2026-06-20）
+
+> 來源：參考 repo [FatihMakes/Mark-XL](https://github.com/FatihMakes/Mark-XL)（本地語音 AI 助理）的完整解析，挑出適合我們（串 API 架構）的優化點。**本地大模型部署相關一律略過**。完整脈絡見 `HANDOFF.md`。
+>
+> **狀態：issue 已開完（#31–#49），全部尚未動工。** 各 issue 已標好 `frontend` / `backend` 與 `phase-0~3`；跨前後端者，preload 契約寫在 issue 內。
+
+| 階段 | 主題 | Issues |
+|---|---|---|
+| **0 · 探針** | 動工前的技術確認 | #31 prompt caching · #32 vision model · #33 OS 工具安全/VAD 邊界 |
+| **1 · 地基（記憶+省錢）** | 長期記憶、降成本、STT 微調 | #34/#35 長期記憶（後端/UI）· #36 省一趟 LLM · #37 提示靜→動排序 · #38 Whisper 領域詞 |
+| **2 · 體驗升級** | 更有生命感的互動 | #39 Orb 隨音量跳動 · #40 活動回饋即時化 · #41/#42 免提語音 VAD（偵測/UI）|
+| **3 · 能力擴張** | agent / 工具 / 多模態 | #43 錯誤自我修復 · #44/#45 背景任務佇列（後端/面板）· #46/#47 檔案多模態（解析/拖放 UI）· #48/#49 OS 控制工具（後端/設定 UI，預設關+總開關）|
+
+執行紀律：共用 `main`，**commit → `git pull --rebase` → push**，回退用 `git revert`；動 `preload.js` 前先 `git fetch`；每個 issue 先把契約寫死再各做各的。
 
 ## 架構分工
 
