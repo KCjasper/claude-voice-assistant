@@ -341,3 +341,12 @@ https://github.com/KCjasper/claude-voice-assistant（公開）
 ### Environment-limited coverage
 - Physical microphone capture, Whisper/CUDA transcription, Porcupine wake-word detection, and real speaker playback require compatible hardware and were not exercised end to end.
 - Live Claw Router, ElevenLabs, Notion, and public Cloudflare tunnel calls require external credentials or services and were not invoked. Their local validation, lifecycle, cancellation, and error paths remain covered by the automated suite.
+
+## Backend architecture fact - Claw Router prompt caching (#31, 2026-06-22)
+
+- Probe target: `https://clawrouter.com/v1/chat/completions`, model `claude-sonnet-4-6`, with the app's saved Claw Router API token.
+- Result: supported through the OpenAI-compatible endpoint. Repeated 1024+ token prompts returned HTTP 200 with `usage.prompt_tokens_details.cached_tokens = 12682`.
+- The OpenAI-compatible response also includes Claude cache accounting keys such as `claude_cache_creation_5_m_tokens` and `claude_cache_creation_1_h_tokens`, but those were `0` in the probe while `cached_tokens` carried the useful signal.
+- An Anthropic-style content block with `cache_control: { type: "ephemeral" }` plus `anthropic-beta: prompt-caching-2024-07-31` was accepted by the endpoint and also returned `cached_tokens = 12682`; however, the probe did not prove that explicit `cache_control` changes routing behavior beyond the automatic cache.
+- Recommendation for #37: do reorder `systemPrompt()` as static protocol first, semi-static memory second, dynamic time/session state last. Do not add Anthropic `cache_control` markers to the OpenAI-compatible message format yet; treat Claw Router caching as automatic and observe `usage.prompt_tokens_details.cached_tokens`.
+- Caution: Claw Router usage fields remain non-standard for streaming/cost accounting. In the probe, `prompt_tokens` was `13` while `cached_tokens` was `12682`, so keep local prompt estimation for billing guards and only use `cached_tokens` as a cache-hit signal.
